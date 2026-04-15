@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Mise",
+    "slug": "mise",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "mise",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#F5EFE0"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.mise.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F5EFE0"
+      },
+      "package": "com.mise.app"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-camera",
+        { "cameraPermission": "Allow Mise to access your camera to photograph dishes." }
+      ],
+      [
+        "expo-image-picker",
+        { "photosPermission": "Allow Mise to access your photos to import dish images." }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
