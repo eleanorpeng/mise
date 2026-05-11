@@ -3,13 +3,26 @@ import { useRouter } from 'expo-router';
 import { colors, fonts, typeScale, spacing, radius } from '@/constants';
 import type { Recipe } from '@/types';
 
+const CUISINE_COLORS: Record<string, [string, string]> = {
+  Italian:   [colors.ember,   colors.rust],
+  Korean:    [colors.peach,   colors.ember],
+  Japanese:  [colors.sand,    colors.umber],
+  Levantine: [colors.butter,  colors.peach],
+  Side:      [colors.linen,   colors.sand],
+};
+
+function getPlaceholderColors(cuisine?: string): [string, string] {
+  return (cuisine ? CUISINE_COLORS[cuisine] : undefined) ?? [colors.ember, colors.rust];
+}
+
 interface RecipeCardProps {
   recipe: Recipe;
   width?: number;
 }
 
-export function RecipeCard({ recipe, width = 180 }: RecipeCardProps) {
+export function RecipeCard({ recipe, width = 200 }: RecipeCardProps) {
   const router = useRouter();
+  const [baseColor, overlayColor] = getPlaceholderColors(recipe.cuisine);
 
   return (
     <TouchableOpacity
@@ -18,20 +31,27 @@ export function RecipeCard({ recipe, width = 180 }: RecipeCardProps) {
       activeOpacity={0.85}
     >
       <View style={styles.imageWrapper}>
-        {recipe.imageUrl ? (
-          <Image source={{ uri: recipe.imageUrl }} style={styles.image} />
+        {recipe.coverImageUrl ? (
+          <Image source={{ uri: recipe.coverImageUrl }} style={styles.image} />
         ) : (
-          <View style={[styles.image, styles.imagePlaceholder]} />
-        )}
-        {recipe.totalTime && (
-          <View style={styles.timeBadge}>
-            <Text style={styles.timeText}>{recipe.totalTime} min</Text>
+          <View style={[styles.image, { backgroundColor: baseColor }]}>
+            {/* Diagonal stripe texture */}
+            <View style={styles.stripes} />
+            {/* Dark overlay for gradient depth */}
+            <View style={[styles.gradientOverlay, { backgroundColor: overlayColor }]} />
           </View>
+        )}
+        {recipe.cuisine && (
+          <Text style={styles.cuisineOverlay}>{recipe.cuisine.toUpperCase()}</Text>
         )}
       </View>
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={2}>{recipe.title}</Text>
-        {recipe.cuisine && <Text style={styles.cuisine}>{recipe.cuisine}</Text>}
+        <Text style={styles.meta}>
+          {[recipe.durationMinutes ? `${recipe.durationMinutes} min` : null, recipe.cuisine]
+            .filter(Boolean)
+            .join(' · ')}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -46,19 +66,44 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   imageWrapper: { position: 'relative' },
-  image: { width: '100%', aspectRatio: 4 / 3 },
-  imagePlaceholder: { backgroundColor: colors.linen },
-  timeBadge: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    backgroundColor: 'rgba(44,34,24,0.68)',
-    borderRadius: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 7,
+  image: {
+    width: '100%',
+    height: 140,
   },
-  timeText: { fontFamily: fonts.bodyRegular, fontSize: 12, color: colors.oat },
-  body: { padding: spacing.md, gap: 4 },
-  title: { ...typeScale.cardTitle, color: colors.espresso },
-  cuisine: { fontFamily: fonts.bodyRegular, fontSize: 12, color: colors.umber },
+  stripes: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.12,
+    // subtle diagonal lines via repeating pattern approximation
+    backgroundColor: 'transparent',
+    borderColor: 'rgba(255,255,255,0.4)',
+    transform: [{ rotate: '115deg' }, { scaleX: 10 }],
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+  },
+  gradientOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.45,
+  },
+  cuisineOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    left: 10,
+    fontFamily: fonts.bodyRegular,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  body: {
+    padding: spacing.md,
+    gap: 4,
+  },
+  title: {
+    ...typeScale.cardTitle,
+    color: colors.espresso,
+  },
+  meta: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 12,
+    color: colors.umber,
+  },
 });

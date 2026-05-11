@@ -25,9 +25,9 @@ export function Chip({ label, variant = 'neutral', onPress, style }: ChipProps) 
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: radius.pill,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
+    borderRadius: radius.input,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     alignSelf: 'flex-start',
   },
   technique: { backgroundColor: colors.blush },

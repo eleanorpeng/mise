@@ -1,0 +1,12 @@
+-- This file is kept for reference only.
+-- The actual schema was created directly in the Supabase SQL Editor.
+-- See the project's Supabase dashboard for the live schema.
+--
+-- Tables: users, techniques, recipes, ingredients, steps, macros,
+--         import_jobs, meal_plans, planned_meals, grocery_items,
+--         cook_sessions, monthly_recaps
+--
+-- Storage bucket "thumbnails" must be created in the Supabase dashboard:
+--   insert into storage.buckets (id, name, public)
+--   values ('thumbnails', 'thumbnails', true)
+--   on conflict (id) do nothing;

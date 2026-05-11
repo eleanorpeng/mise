@@ -18,6 +18,8 @@ export const useRecipesStore = create<RecipesStore>((set) => ({
     try {
       const recipes = await recipesService.list();
       set({ recipes });
+    } catch {
+      // keep current state when backend is unavailable
     } finally {
       set({ loading: false });
     }

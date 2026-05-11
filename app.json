@@ -25,12 +25,17 @@
       "expo-font",
       [
         "expo-camera",
-        { "cameraPermission": "Allow Mise to access your camera to photograph dishes." }
+        {
+          "cameraPermission": "Allow Mise to access your camera to photograph dishes."
+        }
       ],
       [
         "expo-image-picker",
-        { "photosPermission": "Allow Mise to access your photos to import dish images." }
-      ]
+        {
+          "photosPermission": "Allow Mise to access your photos to import dish images."
+        }
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

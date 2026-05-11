@@ -1,15 +1,32 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
+from supabase import create_client, Client
 from app.config import settings
 
-engine = create_async_engine(settings.database_url, echo=False)
-async_session = async_sessionmaker(engine, expire_on_commit=False)
+_client: Client | None = None
 
 
-class Base(DeclarativeBase):
-    pass
+def get_supabase() -> Client:
+    global _client
+    if _client is None:
+        _client = create_client(settings.supabase_url, settings.supabase_service_key)
+    return _client
 
 
-async def get_session():
-    async with async_session() as session:
-        yield session
+class _LazyClient:
+    """Proxy that defers ``create_client`` until the first attribute access."""
+
+    def __getattr__(self, name: str):
+        return getattr(get_supabase(), name)
+
+
+supabase: Client = _LazyClient()  # type: ignore[assignment]
+
+
+def maybe_single(res) -> dict | None:
+    """Safely read .data from a `.maybe_single().execute()` call.
+
+    supabase-py returns ``None`` (not an APIResponse) when no row matches —
+    so ``res.data`` raises AttributeError. Always go through this helper.
+    """
+    if res is None:
+        return None
+    return getattr(res, "data", None)

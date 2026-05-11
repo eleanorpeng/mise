@@ -1,8 +1,41 @@
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+import { supabase } from '@/lib/supabase';
+
+const BACKEND_PORT = 8000;
+
+function resolveBaseUrl(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
+
+  const constantsAny = Constants as any;
+  const hostUri =
+    Constants.expoConfig?.hostUri ??
+    constantsAny.expoGoConfig?.debuggerHost ??
+    constantsAny.manifest?.debuggerHost;
+
+  const host = typeof hostUri === 'string' ? hostUri.split(':')[0] : null;
+  if (host) return `http://${host}:${BACKEND_PORT}`;
+
+  // Android emulator maps host machine to 10.0.2.2; iOS simulator can use localhost.
+  if (Platform.OS === 'android') return `http://10.0.2.2:${BACKEND_PORT}`;
+  return `http://localhost:${BACKEND_PORT}`;
+}
+
+const BASE_URL = resolveBaseUrl();
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (token) {
+    return { Authorization: `Bearer ${token}` };
+  }
+  return {};
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const authHeaders = await getAuthHeaders();
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: { 'Content-Type': 'application/json', ...authHeaders, ...init?.headers },
     ...init,
   });
   if (!res.ok) {

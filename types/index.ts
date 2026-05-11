@@ -1,63 +1,125 @@
 export interface Ingredient {
+  id?: string;
   name: string;
-  quantity: string;
+  quantity: number | null;
   unit?: string;
+  notes?: string;
+  orderIndex?: number;
 }
 
-export interface TechniqueAnnotation {
-  technique: string;
+export interface Technique {
+  id: string;
+  name: string;
   explanation: string;
+  category?: 'heat' | 'knife' | 'sauce' | 'baking' | 'timing' | 'general';
+  difficulty?: 'easy' | 'medium' | 'hard';
 }
 
 export interface RecipeStep {
-  step: number;
+  id?: string;
+  orderIndex: number;
   instruction: string;
-  techniques: TechniqueAnnotation[];
-  duration?: number; // seconds
+  durationSeconds?: number;
+  technique?: Technique | null;
 }
 
 export interface Macros {
   calories: number;
-  protein: number; // grams
-  carbs: number;
-  fat: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  fiberG?: number;
 }
 
 export interface Recipe {
   id: string;
   title: string;
   description?: string;
-  imageUrl?: string;
+  coverImageUrl?: string;
   sourceUrl?: string;
-  sourceType: 'tiktok' | 'reels' | 'photo' | 'manual';
+  sourceType: 'video' | 'photo' | 'manual';
   cuisine?: string;
-  totalTime?: number; // minutes
+  difficulty?: 'easy' | 'medium' | 'hard';
   servings: number;
+  durationMinutes?: number;
+  status: 'processing' | 'ready' | 'failed';
+  isPublic?: boolean;
   ingredients: Ingredient[];
   steps: RecipeStep[];
-  macros?: Macros;
-  savedAt: string;
+  macros?: Macros | null;
+  importedAt?: string;
+  createdAt: string;
 }
 
-export interface MealPlanEntry {
+export interface PlannedMeal {
   id: string;
   recipeId: string;
-  recipe: Recipe;
-  date: string; // ISO date YYYY-MM-DD
+  recipe?: Recipe;
+  plannedDate: string;
   mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   servings: number;
+  cookedAt?: string | null;
 }
 
 export interface WeekPlan {
   weekStart: string;
-  entries: MealPlanEntry[];
+  entries: PlannedMeal[];
 }
 
 export interface GroceryItem {
-  ingredient: string;
-  quantity: string;
+  id: string;
+  ingredientName: string;
+  totalQuantity: number | null;
   unit?: string;
+  category: string;
   checked: boolean;
 }
 
-export type ImportSource = 'tiktok' | 'reels' | 'photo';
+export type ImportSource = 'video' | 'photo';
+
+export type CookingIntent =
+  | 'cook_more'
+  | 'eat_healthier'
+  | 'learn_techniques'
+  | 'save_money'
+  | 'meal_prep';
+
+export type SkillLevel = 'beginner' | 'intermediate' | 'advanced';
+
+export interface UserProfile {
+  userId: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  intent: CookingIntent | null;
+  cuisinePreferences: string[];
+  dietaryRestrictions: string[];
+  skillLevel: SkillLevel | null;
+  onboardedAt: string | null;
+}
+
+export interface ProfileStats {
+  totalRecipes: number;
+  cookedThisMonth: number;
+}
+
+export interface ProfileInsights {
+  totalRecipes: number;
+  totalCooked: number;
+  cookedThisMonth: number;
+  cookedThisYear: number;
+  currentStreakDays: number;
+  techniquesLearned: number;
+  topCuisines: { cuisine: string; count: number }[];
+  monthlyActivity: { month: string; count: number }[];
+}
+
+export interface CookLog {
+  id: string;
+  recipeId: string | null;
+  cookedDate: string;
+  caption: string | null;
+  originalUrl: string;
+  stickerUrl: string;
+  dominantColor: string | null;
+  createdAt: string;
+}

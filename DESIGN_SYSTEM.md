@@ -22,9 +22,11 @@ Mise is a React Native mobile app (iOS + Android) that converts TikTok/Reels coo
 
 ## Design direction
 
-**Warm Retro.** The feeling of a well-loved 1970s cookbook that got a modern, design-forward rebrand. Calm and warm first, expressive second. Tactile and confident without being loud.
+**Warm Retro, modernised.** The feeling of a well-loved 1970s cookbook that got a modern, design-forward rebrand. Calm and warm first, expressive second. Tactile and confident without being loud.
 
 Reference points: Ottolenghi's visual identity, early Monocle magazine, a really good natural wine bar's menu.
+
+Modern layer: floating pill tab bar, subtle gradient blobs as hero card decoration, soft drop shadows for card depth, bento-style section layout on the home screen.
 
 ---
 
@@ -312,26 +314,36 @@ export const radius = {
 }
 ```
 
-### Tab bar
+### Tab bar — floating pill
 
 ```js
-// Container
+// Outer wrapper (transparent, provides safe-area padding)
+{ backgroundColor: colors.oat, paddingHorizontal: 12, paddingTop: 8 }
+
+// Pill container
 {
   backgroundColor: '#2C2218',   // color.espresso
-  borderRadius: 20,
-  paddingVertical: 10,
-  paddingHorizontal: 8,
-  marginHorizontal: 12,
+  borderRadius: 32,
+  flexDirection: 'row',
+  paddingVertical: 6,
+  paddingHorizontal: 6,
 }
 
-// Active icon background
-{ backgroundColor: '#D4521C', borderRadius: 9 } // color.terra
+// Active tab inner pill
+{
+  backgroundColor: '#D4521C',  // color.terra
+  borderRadius: 22,
+  flexDirection: 'row',
+  gap: 6,
+  paddingVertical: 9,
+  paddingHorizontal: 14,
+}
 
-// Active label
-{ fontFamily: 'Urbanist_500Medium', fontSize: 9, color: '#E87A4A' } // color.ember
+// Active label (shown only on active tab)
+{ fontFamily: 'Urbanist_500Medium', fontSize: 12, color: '#FAE8DA' } // color.textOnDark
 
-// Inactive label
-{ fontFamily: 'Urbanist_400Regular', fontSize: 9, color: 'rgba(245,239,224,0.45)' }
+// Inactive icon color
+rgba(245,239,224,0.50)
 ```
 
 ### Toast — success
@@ -374,19 +386,21 @@ export const radius = {
 
 ## Screen anatomy
 
-### Home screen (current — v3)
+### Home screen (v4 — bento)
 
 ```
 StatusBar
-TopBar          → "mise" wordmark (DM Serif Display 28px) + avatar
-Greeting        → sub-label (Umber, Outfit 13px) + title (DM Serif Display 22px)
-WeekCard        → dark hero card: meal count left, Planner button right. No macros.
-ImportBar       → white card, Terra icon, TikTok/Reels CTA
-RecentlySaved   → horizontal scroll of recipe cards
-TabBar          → Home / Recipes / Plan / Cook / Profile
+TopBar          → "mise" wordmark (DM Serif Display 28px) + avatar (initials "E")
+Greeting        → sub-label uppercase (Urbanist 500, 11px, umber) + title (DM Serif Display 28px)
+WeekCard        → dark espresso hero card: big count (52px DM Serif), vertical progress bars,
+                  colour blob decorations (ember + rust circles), "Open planner" ghost pill button
+QuickActions    → two side-by-side pill buttons: "Open planner" (terra) + "Import recipe" (white card)
+RecentlySaved   → section label (uppercase 10px) + horizontal scroll of recipe cards
+GroceryPeek     → collapsible white card: sage icon, progress bar, expandable checklist
+TabBar          → floating pill (espresso bg, terra active pill, active label visible)
 ```
 
-Background: `color.oat`. Screen margin: 20px horizontal.
+Background: `color.oat`. Screen margin: 20px horizontal. Bottom content padding: 120px.
 
 ---
 
@@ -404,8 +418,6 @@ Background: `color.oat`. Screen margin: 20px horizontal.
 ## What Claude Code must never do
 
 - Introduce any color not in this file
-- Use `box-shadow`, `elevation` (except where RN requires it and it's invisible), or drop shadows
-- Use gradients
 - Use `fontWeight: '600'`, `'700'`, or `'bold'` — only `'400'` and `'500'`
 - Use `borderRadius` values other than those in the radius scale
 - Use pure `#000000` or `#FFFFFF` for text
@@ -414,5 +426,10 @@ Background: `color.oat`. Screen margin: 20px horizontal.
 - Apply `color.terra` more than once per screen as a dominant element
 - Use `color.oat` for cards or components — it is the screen background only
 - Use `color.cardBg` (white) anywhere except elevated cards
-- Mix DM Serif Display and Outfit in the same text element
+- Mix DM Serif Display and Urbanist in the same text element
 - Use Title Case — sentence case everywhere except all-caps labels
+
+### Approved exceptions (v4 direction)
+
+- **Gradients are allowed** as decorative blobs inside dark hero cards (ember/rust overlapping circles inside WeekCard). Do not use gradients on text, buttons, or screen backgrounds.
+- **Soft drop shadows are allowed** on elevated cards and the floating tab bar. Use `rgba(20,16,10,0.06)` tones only — never `#000` shadows.

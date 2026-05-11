@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, spacing, radius } from '@/constants';
 
 export function ImportBar() {
@@ -12,13 +13,13 @@ export function ImportBar() {
       activeOpacity={0.85}
     >
       <View style={styles.iconWrapper}>
-        <Text style={styles.icon}>↓</Text>
+        <MaterialCommunityIcons name="link-variant" size={20} color={colors.textOnDark} />
       </View>
       <View style={styles.text}>
         <Text style={styles.title}>Import a recipe</Text>
         <Text style={styles.sub}>Paste a TikTok or Reels link</Text>
       </View>
-      <Text style={styles.chevron}>›</Text>
+      <MaterialCommunityIcons name="chevron-right" size={20} color={colors.umber} />
     </TouchableOpacity>
   );
 }
@@ -30,24 +31,19 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: colors.borderResting,
     marginHorizontal: spacing.xl,
-    marginVertical: spacing.sm,
+    marginBottom: spacing.md,
     padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
   iconWrapper: {
-    width: 40,
-    height: 40,
-    backgroundColor: colors.blush,
+    width: 44,
+    height: 44,
+    backgroundColor: colors.terra,
     borderRadius: radius.inner,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  icon: {
-    fontSize: 18,
-    color: colors.terra,
-    fontFamily: fonts.bodyMedium,
   },
   text: {
     flex: 1,
@@ -62,10 +58,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.umber,
     marginTop: 2,
-  },
-  chevron: {
-    fontFamily: fonts.bodyRegular,
-    fontSize: 20,
-    color: colors.umber,
   },
 });
