@@ -72,7 +72,7 @@ export function CookLogPeek() {
               key={log.id}
               style={[styles.stickerSlot, { transform: [{ rotate: `${(i - 1.5) * 4}deg` }] }]}
             >
-              <Sticker uri={log.stickerUrl} style={styles.stickerImage} borderScale={1.12} />
+              <Sticker uri={log.stickerUrl} style={styles.stickerImage} />
             </View>
           ))}
         </View>

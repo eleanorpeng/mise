@@ -293,7 +293,7 @@ export function StickerWall({ items, height = 300 }: Props) {
               ],
             }}
           >
-            <Sticker uri={item.uri} style={StyleSheet.absoluteFill} borderScale={1.1} />
+            <Sticker uri={item.uri} style={StyleSheet.absoluteFill} />
           </Animated.View>
         );
       })}

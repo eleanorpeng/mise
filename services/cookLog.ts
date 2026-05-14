@@ -1,8 +1,6 @@
 import { supabase } from '@/lib/supabase';
-import { api } from './api';
+import { api, BASE_URL } from './api';
 import type { CookLog } from '@/types';
-
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 export interface CreateCookLogInput {
   imageUri: string;

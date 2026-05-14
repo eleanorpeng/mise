@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -51,6 +51,7 @@ export default function NewCookLogScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ date?: string; recipeId?: string }>();
   const initialDate = params.date ?? todayIso();
+  const insets = useSafeAreaInsets();
 
   const recipes = useRecipesStore((s) => s.recipes);
   const fetchRecipes = useRecipesStore((s) => s.fetch);
@@ -306,7 +307,12 @@ export default function NewCookLogScreen() {
           {error && <Text style={styles.error}>{error}</Text>}
         </ScrollView>
 
-        <View style={styles.footer}>
+        <View
+          style={[
+            styles.footer,
+            { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.md },
+          ]}
+        >
           <Button
             label={submitting ? 'Cutting out your dish…' : 'Save sticker'}
             onPress={handleSubmit}
@@ -547,7 +553,6 @@ const styles = StyleSheet.create({
 
   footer: {
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.lg,
     paddingTop: spacing.sm,
     backgroundColor: colors.oat,
     borderTopWidth: 0.5,

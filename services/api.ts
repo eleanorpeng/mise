@@ -21,7 +21,7 @@ function resolveBaseUrl(): string {
   return `http://localhost:${BACKEND_PORT}`;
 }
 
-const BASE_URL = resolveBaseUrl();
+export const BASE_URL = resolveBaseUrl();
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const { data } = await supabase.auth.getSession();

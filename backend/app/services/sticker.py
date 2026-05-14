@@ -63,7 +63,8 @@ def cut_out(image_bytes: bytes) -> bytes:
     """Run background removal on the input image and return PNG bytes (with alpha).
 
     The output is cropped to the visible sticker region and resized so its long
-    edge is at most ``_STICKER_MAX_DIMENSION``. Raises ``StickerError`` on failure.
+    edge is at most ``_STICKER_MAX_DIMENSION``. The frontend (Skia) renders the
+    outline and drop shadow live from this alpha channel.
     """
     from rembg import remove  # local import: heavy
 

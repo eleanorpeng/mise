@@ -129,7 +129,7 @@ export default function CookLogDetailScreen() {
       </View>
 
       <View style={styles.stage}>
-        <Sticker uri={log.stickerUrl} style={styles.sticker} borderScale={1.05} />
+        <Sticker uri={log.stickerUrl} style={styles.sticker} />
       </View>
 
       <View style={styles.meta}>
