@@ -10,9 +10,7 @@ android/
 .env
 .env.local
 .env.*.local
-.env.example
 backend/.env
-backend/.env.example
 
 # Python
 backend/.venv/
