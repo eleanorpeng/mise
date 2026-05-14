@@ -1,12 +1,13 @@
 import logging
 import shutil
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from openai import OpenAIError
 from pydantic import BaseModel
 
 from app.auth import get_current_user
 from app.database import supabase
+from app.rate_limit import limiter
 from app.schemas import ExtractedTechnique, RecipeExtraction, row_to_camel
 from app.services.downloader import DownloadError
 from app.services.media import MediaError
@@ -198,8 +199,13 @@ def _assemble_in_memory(
 
 
 @router.post("/url", status_code=201)
-async def import_from_url(request: UrlImportRequest, user_id: str = Depends(get_current_user)):
-    url = request.url.strip()
+@limiter.limit("10/minute")
+async def import_from_url(
+    request: Request,
+    body: UrlImportRequest,
+    user_id: str = Depends(get_current_user),
+):
+    url = body.url.strip()
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
 
@@ -215,7 +221,7 @@ async def import_from_url(request: UrlImportRequest, user_id: str = Depends(get_
     work_dir = None
     try:
         _update_job_status(job_id, "downloading")
-        result = await process_video_url(url, fast=request.fast)
+        result = await process_video_url(url, fast=body.fast)
         work_dir = result.work_dir
 
         _update_job_status(job_id, "synthesising")
@@ -252,6 +258,11 @@ async def import_from_url(request: UrlImportRequest, user_id: str = Depends(get_
 
 
 @router.post("/photo", status_code=201)
-async def import_from_photo(request: PhotoImportRequest):
+@limiter.limit("10/minute")
+async def import_from_photo(
+    request: Request,
+    body: PhotoImportRequest,
+    user_id: str = Depends(get_current_user),
+):
     # TODO: call services/photo_pipeline.py
     return {}
