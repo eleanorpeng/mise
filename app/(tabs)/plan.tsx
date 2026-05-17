@@ -60,6 +60,7 @@ export default function PlanScreen() {
   const groceryByWeek = usePlanStore((s) => s.groceryByWeek);
 
   const [tab, setTab] = useState<PlanTab>('plan');
+  const [pagerEnabled, setPagerEnabled] = useState(true);
 
   // Sheets state
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -139,6 +140,7 @@ export default function PlanScreen() {
           ref={pagerRef}
           horizontal
           pagingEnabled
+          scrollEnabled={pagerEnabled}
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={handleScrollEnd}
           contentContainerStyle={{ flexGrow: 0 }}
@@ -155,6 +157,7 @@ export default function PlanScreen() {
               onLongPressMeal={openActionsFor}
               onToggleCooked={(entry) => toggleCooked(entry, weekStart)}
               onRemove={(entry) => removeEntry(entry.id, weekStart)}
+              setPagerEnabled={setPagerEnabled}
             />
           ))}
         </ScrollView>
@@ -195,6 +198,7 @@ interface WeekColumnProps {
   onLongPressMeal: (entry: PlannedMeal) => void;
   onToggleCooked: (entry: PlannedMeal) => void;
   onRemove: (entry: PlannedMeal) => void;
+  setPagerEnabled?: (enabled: boolean) => void;
 }
 
 function WeekColumn({
@@ -206,6 +210,7 @@ function WeekColumn({
   onLongPressMeal,
   onToggleCooked,
   onRemove,
+  setPagerEnabled,
 }: WeekColumnProps) {
   const days = useMemo(() => buildDays(weekStart), [weekStart]);
   const todayIso = toIso(new Date());
@@ -254,6 +259,7 @@ function WeekColumn({
             onLongPressMeal={onLongPressMeal}
             onToggleCooked={onToggleCooked}
             onRemoveMeal={onRemove}
+            setPagerEnabled={setPagerEnabled}
           />
         );
       })}

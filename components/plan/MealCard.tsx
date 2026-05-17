@@ -18,6 +18,7 @@ interface Props {
   onLongPress: () => void;
   onToggleCooked: () => void;
   onSwipeDelete: () => void;
+  setPagerEnabled?: (enabled: boolean) => void;
 }
 
 const SWIPE_THRESHOLD = -84;
@@ -35,17 +36,23 @@ export function MealCard({
   onLongPress,
   onToggleCooked,
   onSwipeDelete,
+  setPagerEnabled,
 }: Props) {
   const tx = useRef(new Animated.Value(0)).current;
   const swipingRef = useRef(false);
+  const setPagerEnabledRef = useRef(setPagerEnabled);
+  setPagerEnabledRef.current = setPagerEnabled;
 
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+        Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onMoveShouldSetPanResponderCapture: (_, g) =>
+        Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
       onPanResponderGrant: () => {
         swipingRef.current = true;
+        setPagerEnabledRef.current?.(false);
       },
       onPanResponderMove: (_, g) => {
         if (g.dx < 0) tx.setValue(Math.max(g.dx, -160));
@@ -56,7 +63,11 @@ export function MealCard({
             toValue: -400,
             duration: 200,
             useNativeDriver: true,
-          }).start(() => onSwipeDelete());
+          }).start(() => {
+            swipingRef.current = false;
+            setPagerEnabledRef.current?.(true);
+            onSwipeDelete();
+          });
         } else {
           Animated.spring(tx, {
             toValue: 0,
@@ -65,12 +76,14 @@ export function MealCard({
             bounciness: 6,
           }).start(() => {
             swipingRef.current = false;
+            setPagerEnabledRef.current?.(true);
           });
         }
       },
       onPanResponderTerminate: () => {
         Animated.spring(tx, { toValue: 0, useNativeDriver: true }).start(() => {
           swipingRef.current = false;
+          setPagerEnabledRef.current?.(true);
         });
       },
     })

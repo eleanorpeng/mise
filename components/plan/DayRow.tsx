@@ -16,6 +16,7 @@ interface Props {
   onLongPressMeal: (entry: PlannedMeal) => void;
   onToggleCooked: (entry: PlannedMeal) => void;
   onRemoveMeal: (entry: PlannedMeal) => void;
+  setPagerEnabled?: (enabled: boolean) => void;
 }
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -49,6 +50,7 @@ export function DayRow({
   onLongPressMeal,
   onToggleCooked,
   onRemoveMeal,
+  setPagerEnabled,
 }: Props) {
   const dow = DOW[(date.getDay() + 6) % 7]; // Mon-first
   const dayNum = date.getDate();
@@ -98,6 +100,7 @@ export function DayRow({
                 onLongPress={() => onLongPressMeal(entry)}
                 onToggleCooked={() => onToggleCooked(entry)}
                 onSwipeDelete={() => onRemoveMeal(entry)}
+                setPagerEnabled={setPagerEnabled}
               />
             ))}
             <TouchableOpacity
