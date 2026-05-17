@@ -41,9 +41,6 @@ export function RecipeCard({ recipe, width = 200 }: RecipeCardProps) {
             <View style={[styles.gradientOverlay, { backgroundColor: overlayColor }]} />
           </View>
         )}
-        {recipe.cuisine && (
-          <Text style={styles.cuisineOverlay}>{recipe.cuisine.toUpperCase()}</Text>
-        )}
       </View>
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={2}>{recipe.title}</Text>
@@ -83,15 +80,6 @@ const styles = StyleSheet.create({
   gradientOverlay: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.45,
-  },
-  cuisineOverlay: {
-    position: 'absolute',
-    bottom: 8,
-    left: 10,
-    fontFamily: fonts.bodyRegular,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: 'rgba(255,255,255,0.85)',
   },
   body: {
     padding: spacing.md,

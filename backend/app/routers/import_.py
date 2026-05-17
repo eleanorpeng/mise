@@ -1,7 +1,7 @@
 import logging
 import shutil
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from openai import OpenAIError
 from pydantic import BaseModel
 
@@ -11,6 +11,7 @@ from app.rate_limit import limiter
 from app.schemas import ExtractedTechnique, RecipeExtraction, row_to_camel
 from app.services.downloader import DownloadError
 from app.services.media import MediaError
+from app.services.photo_pipeline import extract_recipe_from_photo
 from app.services.video_pipeline import process_video_url
 
 logger = logging.getLogger(__name__)
@@ -21,10 +22,6 @@ router = APIRouter()
 class UrlImportRequest(BaseModel):
     url: str
     fast: bool = False
-
-
-class PhotoImportRequest(BaseModel):
-    image: str  # base64
 
 
 def _update_job_status(job_id: str, status: str, **extra) -> None:
@@ -44,11 +41,29 @@ def _upload_thumbnail(filepath, recipe_id: str) -> str | None:
         return None
 
 
+def _upload_thumbnail_bytes(image_bytes: bytes, recipe_id: str, content_type: str) -> str | None:
+    try:
+        ext = "jpg"
+        if content_type == "image/png":
+            ext = "png"
+        elif content_type == "image/webp":
+            ext = "webp"
+        storage_path = f"{recipe_id}.{ext}"
+        supabase.storage.from_("thumbnails").upload(
+            storage_path, image_bytes, file_options={"content-type": content_type},
+        )
+        return supabase.storage.from_("thumbnails").get_public_url(storage_path)
+    except Exception:
+        logger.warning("Thumbnail upload failed for %s", recipe_id, exc_info=True)
+        return None
+
+
 def _persist_recipe(
     user_id: str,
     extraction: RecipeExtraction,
     source_url: str,
     cover_url: str | None,
+    source_type: str = "video",
 ) -> dict:
     """Insert recipe + ingredients + steps + techniques + macros, then return
     a fully-assembled camelCase recipe dict.
@@ -63,7 +78,7 @@ def _persist_recipe(
         "title": extraction.title,
         "description": extraction.description,
         "source_url": source_url,
-        "source_type": "video",
+        "source_type": source_type,
         "cover_image_url": cover_url,
         "cuisine": extraction.cuisine,
         "difficulty": extraction.difficulty,
@@ -261,8 +276,41 @@ async def import_from_url(
 @limiter.limit("10/minute")
 async def import_from_photo(
     request: Request,
-    body: PhotoImportRequest,
+    image: UploadFile = File(...),
+    caption: str | None = Form(default=None),
     user_id: str = Depends(get_current_user),
 ):
-    # TODO: call services/photo_pipeline.py
-    return {}
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Image is required")
+
+    mime = image.content_type or "image/jpeg"
+    if not mime.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Uploaded file is not an image")
+
+    job_res = supabase.table("import_jobs").insert({
+        "user_id": user_id,
+        "source_url": None,
+        "source_type": "photo",
+        "status": "synthesising",
+    }).execute()
+    job_id = job_res.data[0]["id"]
+
+    try:
+        extraction = await extract_recipe_from_photo(image_bytes, mime, caption=caption)
+        cover_url = _upload_thumbnail_bytes(image_bytes, job_id, mime)
+        full_recipe = _persist_recipe(
+            user_id, extraction, source_url="", cover_url=cover_url, source_type="photo",
+        )
+        _update_job_status(job_id, "done", recipe_id=full_recipe["id"])
+        return full_recipe
+
+    except OpenAIError as exc:
+        _update_job_status(job_id, "failed", error_message=str(exc))
+        raise HTTPException(status_code=502, detail="AI service temporarily unavailable")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _update_job_status(job_id, "failed", error_message=str(exc))
+        logger.exception("Unexpected error processing photo")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
