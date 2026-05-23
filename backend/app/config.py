@@ -12,6 +12,22 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     edamam_app_id: str = ""
     edamam_app_key: str = ""
+    elevenlabs_api_key: str = ""
+
+    # DigitalOcean serverless inference (OpenAI-compatible). When the key is
+    # set, text chat completions route here; vision/Whisper/TTS stay on OpenAI.
+    do_inference_api_key: str = ""
+    do_inference_base_url: str = "https://inference.do-ai.run/v1/"
+    # DO model slug for text chat. OpenAI/Anthropic slugs require a higher DO
+    # tier; llama3.3-70b-instruct is available and supports JSON mode.
+    chat_model: str = "llama3.3-70b-instruct"
+
+    # OpenRouter (OpenAI-compatible) for vision. When the key is set, the photo
+    # and video recipe pipelines route here; otherwise they use OpenAI directly.
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    vision_model: str = "google/gemini-2.5-pro"
+    vision_model_fast: str = "google/gemini-2.5-flash"
 
     model_config = {"env_file": str(_ENV_FILE)}
 

@@ -4,9 +4,7 @@ import base64
 import json
 import logging
 
-from openai import AsyncOpenAI
-
-from app.config import settings
+from app.llm import vision_client, vision_model
 from app.schemas import RecipeExtraction
 
 logger = logging.getLogger(__name__)
@@ -80,7 +78,7 @@ async def extract_recipe_from_photo(
     An optional ``caption`` grounds the model — e.g. "pad see ew from a Thai
     restaurant" — and substantially improves dish identification when given.
     """
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = vision_client()
 
     b64 = base64.b64encode(image_bytes).decode()
     data_url = f"data:{mime_type};base64,{b64}"
@@ -91,7 +89,7 @@ async def extract_recipe_from_photo(
         user_text += f'\n\nThe user added this hint about the dish: "{caption}". Trust this hint when identifying the dish.'
 
     response = await client.chat.completions.create(
-        model="gpt-4o",
+        model=vision_model(),
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},

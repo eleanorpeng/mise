@@ -5,9 +5,7 @@ import json
 import logging
 from pathlib import Path
 
-from openai import AsyncOpenAI
-
-from app.config import settings
+from app.llm import vision_client, vision_model
 from app.schemas import RecipeExtraction
 
 logger = logging.getLogger(__name__)
@@ -105,8 +103,8 @@ async def build_recipe(
     When *fast* is True, uses gpt-4o-mini — roughly 3× faster end-to-end with
     slightly less precise quantities and shorter technique explanations.
     """
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
-    model = "gpt-4o-mini" if fast else "gpt-4o"
+    client = vision_client()
+    model = vision_model(fast=fast)
 
     response = await client.chat.completions.create(
         model=model,

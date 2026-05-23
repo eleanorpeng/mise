@@ -141,7 +141,7 @@ export default function ProfileScreen() {
         <TouchableOpacity
           style={styles.recapCard}
           activeOpacity={0.9}
-          onPress={() => Alert.alert('Coming soon', 'Your monthly recap is being prepared.')}
+          onPress={() => router.push('/recap' as any)}
         >
           <View style={styles.recapBlobOne} />
           <View style={styles.recapBlobTwo} />

@@ -4,7 +4,6 @@
     "slug": "mise",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "scheme": "mise",
     "userInterfaceStyle": "light",
     "splash": {
@@ -33,6 +32,12 @@
         "expo-image-picker",
         {
           "photosPermission": "Allow Mise to access your photos to import dish images."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Mise to access your microphone for voice cook-along."
         }
       ],
       "expo-web-browser"
