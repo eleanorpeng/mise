@@ -18,7 +18,7 @@ if (
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, typeScale, spacing, radius } from '@/constants';
@@ -155,6 +155,8 @@ export default function RecipeDetailScreen() {
   useEffect(() => {
     setServingsOverride(null);
   }, [id]);
+
+  const insets = useSafeAreaInsets();
 
   if (loading) {
     return (
@@ -487,6 +489,28 @@ export default function RecipeDetailScreen() {
         )}
       </ScrollView>
 
+      {recipe.steps.length > 0 && (
+        <View
+          style={[
+            styles.cookAlongBar,
+            { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.cookAlongBtn}
+            activeOpacity={0.85}
+            onPress={() => router.push(`/cook-along/${id}` as any)}
+          >
+            <MaterialCommunityIcons
+              name="microphone"
+              size={18}
+              color={colors.textOnDark}
+            />
+            <Text style={styles.cookAlongBtnText}>Cook along</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {id && (
         <>
           <AddToCollectionSheet
@@ -658,7 +682,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.umber,
   },
-  content: { paddingBottom: spacing.xl4 },
+  content: { paddingBottom: 96 },
+
+  cookAlongBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    backgroundColor: colors.oat,
+    borderTopWidth: 0.5,
+    borderTopColor: colors.borderResting,
+  },
+  cookAlongBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.terra,
+    borderRadius: radius.pill,
+    paddingVertical: 14,
+  },
+  cookAlongBtnText: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 15,
+    color: colors.textOnDark,
+  },
 
   topBar: {
     flexDirection: 'row',

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput, Pressable, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, typeScale, spacing, radius } from '@/constants';
 import { useCollectionsStore, type Collection } from '@/store/collections';
 import { useRecipesStore } from '@/store/recipes';
@@ -101,6 +102,14 @@ export default function RecipesScreen() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [paletteIdx, setPaletteIdx] = useState(0);
+  const [chefInput, setChefInput] = useState('');
+
+  const askChef = () => {
+    const q = chefInput.trim();
+    if (!q) return;
+    setChefInput('');
+    router.push({ pathname: '/chef', params: { q } });
+  };
 
   const sheetHeight = Dimensions.get('window').height;
   const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -161,6 +170,31 @@ export default function RecipesScreen() {
           <TouchableOpacity style={styles.newBtn} activeOpacity={0.85} onPress={() => setCreating(true)}>
             <Text style={styles.newBtnText}>+ New</Text>
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.chefCard}>
+          <Text style={styles.chefEyebrow}>Ask the chef</Text>
+          <Text style={styles.chefTitle}>What's in your kitchen?</Text>
+          <View style={styles.chefInputRow}>
+            <TextInput
+              value={chefInput}
+              onChangeText={setChefInput}
+              placeholder="e.g. chicken thighs, lemon, rice…"
+              placeholderTextColor={colors.umber}
+              style={styles.chefInput}
+              returnKeyType="send"
+              onSubmitEditing={askChef}
+              multiline
+            />
+            <TouchableOpacity
+              style={[styles.chefSend, !chefInput.trim() && styles.chefSendDisabled]}
+              activeOpacity={0.85}
+              onPress={askChef}
+              disabled={!chefInput.trim()}
+            >
+              <MaterialCommunityIcons name="arrow-up" size={20} color={colors.textOnDark} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {rows.map((row, rowIdx) => (
@@ -317,6 +351,61 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodyMedium,
     fontSize: 13,
     color: colors.textOnDark,
+  },
+
+  chefCard: {
+    backgroundColor: colors.cardBg,
+    borderRadius: radius.card,
+    borderWidth: 0.5,
+    borderColor: colors.borderResting,
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.xl2,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  chefEyebrow: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: colors.umber,
+  },
+  chefTitle: {
+    fontFamily: fonts.display,
+    fontSize: 20,
+    lineHeight: 26,
+    color: colors.espresso,
+  },
+  chefInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  chefInput: {
+    flex: 1,
+    backgroundColor: colors.linen,
+    borderRadius: radius.inner,
+    borderWidth: 0.5,
+    borderColor: colors.sand,
+    paddingHorizontal: spacing.md,
+    paddingTop: 12,
+    paddingBottom: 12,
+    fontFamily: fonts.bodyRegular,
+    fontSize: 15,
+    color: colors.espresso,
+    maxHeight: 110,
+  },
+  chefSend: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.avatar,
+    backgroundColor: colors.espresso,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chefSendDisabled: {
+    opacity: 0.4,
   },
 
   row: {

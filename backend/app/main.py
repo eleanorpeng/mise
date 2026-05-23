@@ -7,7 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.rate_limit import limiter
-from app.routers import recipes, import_, planner, voice, collections, cook_log, profile
+from app.routers import recipes, import_, planner, voice, collections, cook_log, profile, recap, chef
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,6 +35,8 @@ app.include_router(voice.router, prefix="/voice", tags=["voice"])
 app.include_router(collections.router, prefix="/collections", tags=["collections"])
 app.include_router(cook_log.router, prefix="/cook-log", tags=["cook-log"])
 app.include_router(profile.router, prefix="/profile", tags=["profile"])
+app.include_router(recap.router, prefix="/recap", tags=["recap"])
+app.include_router(chef.router, prefix="/chef", tags=["chef"])
 
 
 @app.get("/health")

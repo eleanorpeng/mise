@@ -93,9 +93,15 @@ export function StickerWall({ items, height = 300 }: Props) {
     const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     startTimeRef.current = now;
 
+    // Size each sticker so the whole set roughly fills the container.
+    // Solve (N * size²) ≈ W * H * FILL, then clamp.
+    const FILL = 0.55;
+    const targetSize = Math.sqrt((W * H * FILL) / Math.max(items.length, 1));
+    const baseSize = Math.min(200, Math.max(70, targetSize));
+
     const next: Body[] = items.map((item, i) => {
       const rng = mulberry32(hashSeed(item.id));
-      const size = 60 + rng() * 22; // 60–82
+      const size = baseSize * (0.9 + rng() * 0.2); // ±10% variance
       const r = size * 0.42;        // tighter than visual size so they overlap a bit, like real stickers
       // Spawn above the jar, spread across width.
       const spawnX = 12 + rng() * (W - 24 - size);
