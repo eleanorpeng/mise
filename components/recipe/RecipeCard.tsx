@@ -18,9 +18,10 @@ function getPlaceholderColors(cuisine?: string): [string, string] {
 interface RecipeCardProps {
   recipe: Recipe;
   width?: number;
+  onLongPress?: () => void;
 }
 
-export function RecipeCard({ recipe, width = 200 }: RecipeCardProps) {
+export function RecipeCard({ recipe, width = 200, onLongPress }: RecipeCardProps) {
   const router = useRouter();
   const [baseColor, overlayColor] = getPlaceholderColors(recipe.cuisine);
 
@@ -28,6 +29,8 @@ export function RecipeCard({ recipe, width = 200 }: RecipeCardProps) {
     <TouchableOpacity
       style={[styles.card, { width }]}
       onPress={() => router.push(`/recipe/${recipe.id}`)}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       activeOpacity={0.85}
     >
       <View style={styles.imageWrapper}>

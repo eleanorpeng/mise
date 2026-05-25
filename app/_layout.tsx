@@ -63,7 +63,6 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.oat } }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="recipe/[id]" options={{ presentation: 'card' }} />
-        <Stack.Screen name="chef" options={{ presentation: 'card' }} />
         <Stack.Screen name="import" options={{ presentation: 'modal' }} />
         <Stack.Screen name="cook-log/new" options={{ presentation: 'modal' }} />
         <Stack.Screen name="cook-log/[id]" options={{ presentation: 'card' }} />

@@ -12,8 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, spacing, radius } from '@/constants';
 import {
@@ -33,6 +33,9 @@ interface Turn {
   suggestions?: string[];
 }
 
+let _idSeq = 0;
+const nextId = () => `t${++_idSeq}`;
+
 function uniqueMerge(a: string[] = [], b: string[] = []): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -46,11 +49,6 @@ function uniqueMerge(a: string[] = [], b: string[] = []): string[] {
   return out;
 }
 
-let _idSeq = 0;
-const nextId = () => `t${++_idSeq}`;
-
-// Progressive word-by-word reveal — gives assistant replies the streaming
-// feel of Claude without server-sent events. Calls onDone when fully shown.
 function AssistantText({
   text,
   animate,
@@ -63,7 +61,6 @@ function AssistantText({
   onDone?: () => void;
 }) {
   const [shown, setShown] = useState(animate ? '' : text);
-
   useEffect(() => {
     if (!animate) {
       setShown(text);
@@ -83,7 +80,6 @@ function AssistantText({
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, animate]);
-
   return <Text style={styles.assistantText}>{shown}</Text>;
 }
 
@@ -183,10 +179,9 @@ function RecipePreview({
   );
 }
 
-export default function ChefScreen() {
+export function ChefChat() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { q } = useLocalSearchParams<{ q: string }>();
   const fetchRecipes = useRecipesStore((s) => s.fetch);
 
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -195,12 +190,10 @@ export default function ChefScreen() {
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
-  // The assistant turn currently revealing its text; recipe waits for it.
   const [streamingId, setStreamingId] = useState<string | null>(null);
 
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
-  const startedRef = useRef(false);
 
   const scrollToEnd = () => {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
@@ -244,8 +237,6 @@ export default function ChefScreen() {
         },
       ]);
 
-      // Remember durable preferences the user stated, so future chats skip
-      // questions we already know the answer to.
       if (res.learned) {
         const cur = useProfileStore.getState().profile;
         const dietary = uniqueMerge(
@@ -274,21 +265,20 @@ export default function ChefScreen() {
     }
   };
 
-  // Kick off with the ingredients the user typed on the recipes tab.
-  useEffect(() => {
-    if (startedRef.current) return;
-    const initial = (q || '').trim();
-    if (!initial) return;
-    startedRef.current = true;
-    send(initial, []);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
-
   const handleSend = () => {
     const text = draft.trim();
     if (!text || pending) return;
     setDraft('');
     send(text, turns);
+  };
+
+  const handleNewChat = () => {
+    setTurns([]);
+    setDraft('');
+    setError(null);
+    setStreamingId(null);
+    setSavingId(null);
+    setSavedId(null);
   };
 
   const handleSave = async (turn: Turn) => {
@@ -298,7 +288,7 @@ export default function ChefScreen() {
       const saved = await chefService.save(turn.recipe);
       setSavedId(turn.id);
       fetchRecipes();
-      router.replace(`/recipe/${saved.id}`);
+      router.push(`/recipe/${saved.id}`);
     } catch (err: any) {
       setError(err?.message || 'Could not save the recipe.');
     } finally {
@@ -306,21 +296,42 @@ export default function ChefScreen() {
     }
   };
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={12} style={styles.iconBtn}>
-          <MaterialCommunityIcons name="close" size={22} color={colors.espresso} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Ask the chef</Text>
-        <View style={{ width: 32 }} />
-      </View>
+  const isEmpty = turns.length === 0 && !pending;
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
-      >
+  return (
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+    >
+      {turns.length > 0 ? (
+        <View style={styles.chatHeader}>
+          <TouchableOpacity
+            onPress={handleNewChat}
+            hitSlop={10}
+            style={styles.newChatBtn}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons
+              name="square-edit-outline"
+              size={16}
+              color={colors.umber}
+            />
+            <Text style={styles.newChatText}>New chat</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {isEmpty ? (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyEyebrow}>Ask the chef</Text>
+          <Text style={styles.emptyTitle}>What's in your kitchen?</Text>
+          <Text style={styles.emptyHelp}>
+            Tell me the ingredients you have and I'll suggest a dish — I might
+            ask a question or two first.
+          </Text>
+        </View>
+      ) : (
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
@@ -399,55 +410,87 @@ export default function ChefScreen() {
           {pending ? <ThinkingDots /> : null}
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </ScrollView>
+      )}
 
-        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-          <TextInput
-            ref={inputRef}
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Reply with a message…"
-            placeholderTextColor={colors.umber}
-            style={styles.composerInput}
-            multiline
-            returnKeyType="send"
-            onSubmitEditing={handleSend}
-          />
-          <TouchableOpacity
-            style={[styles.send, (!draft.trim() || pending) && styles.sendDisabled]}
-            activeOpacity={0.85}
-            onPress={handleSend}
-            disabled={!draft.trim() || pending}
-          >
-            <MaterialCommunityIcons name="arrow-up" size={20} color={colors.textOnDark} />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      <View style={[styles.composer, { paddingBottom: insets.bottom + 64 }]}>
+        <TextInput
+          ref={inputRef}
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="List ingredients you have…"
+          placeholderTextColor={colors.umber}
+          style={styles.composerInput}
+          selectionColor={colors.terra}
+          cursorColor={colors.terra}
+          multiline
+          returnKeyType="send"
+          onSubmitEditing={handleSend}
+        />
+        <TouchableOpacity
+          style={[styles.send, (!draft.trim() || pending) && styles.sendDisabled]}
+          activeOpacity={0.85}
+          onPress={handleSend}
+          disabled={!draft.trim() || pending}
+        >
+          <MaterialCommunityIcons name="arrow-up" size={20} color={colors.textOnDark} />
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.oat },
   flex: { flex: 1 },
 
-  topBar: {
+  chatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xs,
+  },
+  newChatBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    backgroundColor: colors.linen,
   },
-  iconBtn: {
-    width: 32,
-    height: 32,
+  newChatText: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    color: colors.umber,
+  },
+
+  emptyWrap: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.xl3,
+    gap: spacing.sm,
   },
-  title: {
+  emptyEyebrow: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: colors.umber,
+  },
+  emptyTitle: {
     fontFamily: fonts.display,
-    fontSize: 18,
+    fontSize: 28,
+    lineHeight: 34,
     color: colors.espresso,
+    textAlign: 'center',
+  },
+  emptyHelp: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 14,
+    lineHeight: 21,
+    color: colors.umber,
+    textAlign: 'center',
+    marginTop: 4,
   },
 
   thread: {
@@ -457,10 +500,7 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
   },
 
-  // User: subtle contained bubble, right-aligned (Claude-style)
-  userRow: {
-    alignItems: 'flex-end',
-  },
+  userRow: { alignItems: 'flex-end' },
   userBubble: {
     maxWidth: '88%',
     backgroundColor: colors.linen,
@@ -475,10 +515,7 @@ const styles = StyleSheet.create({
     color: colors.espresso,
   },
 
-  // Assistant: full-width plain text, no bubble
-  assistantRow: {
-    alignItems: 'flex-start',
-  },
+  assistantRow: { alignItems: 'flex-start' },
   assistantText: {
     fontFamily: fonts.bodyRegular,
     fontSize: 16,
@@ -490,38 +527,6 @@ const styles = StyleSheet.create({
     height: 9,
     borderRadius: radius.avatar,
     backgroundColor: colors.terra,
-  },
-
-  suggestionWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  suggestionChip: {
-    backgroundColor: colors.linen,
-    borderRadius: radius.pill,
-    borderWidth: 0.5,
-    borderColor: colors.borderResting,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-  },
-  suggestionText: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 13,
-    color: colors.espresso,
-  },
-  suggestionChipCustom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'transparent',
-    borderColor: colors.borderEmphasis,
-  },
-  suggestionTextCustom: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 13,
-    color: colors.umber,
   },
 
   recipeCard: {
@@ -576,13 +581,43 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     alignItems: 'center',
   },
-  saveBtnDisabled: {
-    opacity: 0.55,
-  },
+  saveBtnDisabled: { opacity: 0.55 },
   saveBtnText: {
     fontFamily: fonts.bodyMedium,
     fontSize: 15,
     color: colors.textOnDark,
+  },
+
+  suggestionWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  suggestionChip: {
+    backgroundColor: colors.linen,
+    borderRadius: radius.pill,
+    borderWidth: 0.5,
+    borderColor: colors.borderResting,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  suggestionText: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
+    color: colors.espresso,
+  },
+  suggestionChipCustom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'transparent',
+    borderColor: colors.borderEmphasis,
+  },
+  suggestionTextCustom: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
+    color: colors.umber,
   },
 
   errorText: {
@@ -599,14 +634,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
   },
   composerInput: {
     flex: 1,
-    backgroundColor: colors.linen,
+    backgroundColor: colors.cardBg,
     borderRadius: radius.inner,
     borderWidth: 0.5,
-    borderColor: colors.sand,
+    borderColor: colors.borderResting,
     paddingHorizontal: spacing.md,
     paddingTop: 11,
     paddingBottom: 11,
@@ -619,11 +653,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: radius.avatar,
-    backgroundColor: colors.espresso,
+    backgroundColor: colors.terra,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendDisabled: {
-    opacity: 0.4,
-  },
+  sendDisabled: { opacity: 0.4 },
 });

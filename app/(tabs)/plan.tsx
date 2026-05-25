@@ -8,7 +8,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors, spacing } from '@/constants';
 import { usePlanStore, getMondayIso, addWeeks } from '@/store/plan';
 import { usePreferencesStore } from '@/store/preferences';
@@ -59,8 +59,17 @@ export default function PlanScreen() {
   const toggleCooked = usePlanStore((s) => s.toggleCooked);
   const groceryByWeek = usePlanStore((s) => s.groceryByWeek);
 
-  const [tab, setTab] = useState<PlanTab>('plan');
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const [tab, setTab] = useState<PlanTab>(
+    params.tab === 'grocery' ? 'grocery' : 'plan',
+  );
   const [pagerEnabled, setPagerEnabled] = useState(true);
+
+  // Allow deep-linking to the grocery view (e.g. from the home peek).
+  useEffect(() => {
+    if (params.tab === 'grocery') setTab('grocery');
+    else if (params.tab === 'plan') setTab('plan');
+  }, [params.tab]);
 
   // Sheets state
   const [pickerVisible, setPickerVisible] = useState(false);

@@ -60,13 +60,11 @@ export default function CollectionScreen() {
   };
 
   const renderItem = ({ item }: { item: Recipe }) => (
-    <TouchableOpacity
+    <RecipeCard
+      recipe={item}
+      width={CARD_WIDTH}
       onLongPress={() => handleLongPress(item)}
-      delayLongPress={350}
-      activeOpacity={0.85}
-    >
-      <RecipeCard recipe={item} width={CARD_WIDTH} />
-    </TouchableOpacity>
+    />
   );
 
   return (

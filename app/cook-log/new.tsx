@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -51,7 +51,6 @@ export default function NewCookLogScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ date?: string; recipeId?: string }>();
   const initialDate = params.date ?? todayIso();
-  const insets = useSafeAreaInsets();
 
   const recipes = useRecipesStore((s) => s.recipes);
   const fetchRecipes = useRecipesStore((s) => s.fetch);
@@ -129,16 +128,8 @@ export default function NewCookLogScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
-          <MaterialCommunityIcons
-            name="close"
-            size={22}
-            color={colors.espresso}
-          />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Log a cook</Text>
-        <View style={{ width: 22 }} />
+      <View style={styles.handleWrap}>
+        <View style={styles.handle} />
       </View>
 
       <KeyboardAvoidingView
@@ -151,6 +142,11 @@ export default function NewCookLogScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          <Text style={styles.title}>Log a cook</Text>
+          <Text style={styles.sub}>
+            Save a photo of what you made to your cooking calendar.
+          </Text>
+
           {imageUri ? (
             <View style={styles.previewWrap}>
               <Image source={{ uri: imageUri }} style={styles.preview} />
@@ -305,21 +301,14 @@ export default function NewCookLogScreen() {
           </View>
 
           {error && <Text style={styles.error}>{error}</Text>}
-        </ScrollView>
 
-        <View
-          style={[
-            styles.footer,
-            { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.md },
-          ]}
-        >
           <Button
             label={submitting ? 'Cutting out your dish…' : 'Save sticker'}
             onPress={handleSubmit}
             disabled={!imageUri}
             loading={submitting}
           />
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
 
       {submitting && (
@@ -340,24 +329,29 @@ export default function NewCookLogScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.oat },
   flex: { flex: 1 },
-  headerRow: {
-    flexDirection: 'row',
+  handleWrap: {
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
-  headerTitle: {
-    ...typeScale.h2,
-    fontSize: 18,
-    color: colors.espresso,
+  handle: {
+    width: 36,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.sand,
   },
   content: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
+    padding: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xl3,
     gap: spacing.lg,
+  },
+  title: { ...typeScale.h1, color: colors.espresso },
+  sub: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 15,
+    color: colors.umber,
+    lineHeight: 22,
   },
 
   pickerCard: {
@@ -549,14 +543,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.rust,
     paddingHorizontal: spacing.xs,
-  },
-
-  footer: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    backgroundColor: colors.oat,
-    borderTopWidth: 0.5,
-    borderTopColor: colors.borderResting,
   },
 
   fullLoader: {
