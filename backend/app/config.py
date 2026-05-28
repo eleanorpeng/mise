@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     edamam_app_id: str = ""
     edamam_app_key: str = ""
-    elevenlabs_api_key: str = ""
 
     # DigitalOcean serverless inference (OpenAI-compatible). When the key is
     # set, text chat completions route here; vision/Whisper/TTS stay on OpenAI.
@@ -28,6 +27,10 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     vision_model: str = "google/gemini-2.5-pro"
     vision_model_fast: str = "google/gemini-2.5-flash"
+
+    # Text-to-speech for voice cook-along. Routes to Mistral Voxtral Mini TTS
+    # via OpenRouter when OPENROUTER_API_KEY is set; otherwise OpenAI TTS.
+    voxtral_tts_model: str = "mistralai/voxtral-mini-tts-2603"
 
     model_config = {"env_file": str(_ENV_FILE)}
 

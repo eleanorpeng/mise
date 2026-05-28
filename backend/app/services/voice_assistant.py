@@ -7,7 +7,6 @@ import re
 from io import BytesIO
 from typing import Literal
 
-import httpx
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -32,8 +31,6 @@ class VoiceResponse(BaseModel):
 
 
 OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
-DEFAULT_TTS_VOICE = "nova"
-DEFAULT_TTS_PROVIDER = "openai"
 
 OPENAI_VOICES = frozenset(
     {
@@ -42,32 +39,36 @@ OPENAI_VOICES = frozenset(
     }
 )
 
-ELEVENLABS_MODEL = "eleven_turbo_v2_5"
-ELEVENLABS_VOICES = {
-    "custom": "DODLEQrClDo8wCz460ld",
-    "custom2": "qSeXEcewz7tA0Q0qk9fH",
-    "custom3": "kdmDKE6EkgrWrrykO9Qt",
-    "custom4": "7li2FesTkwg1glJviKzT",
-    "rachel": "21m00Tcm4TlvDq8ikWAM",
-    "bella": "EXAVITQu4vr4xnSDxMaL",
-    "elli": "MF3mGyEYCl7XYWbV9V6O",
-    "domi": "AZnzlk1XvdvUeBnXmlld",
-    "antoni": "ErXwobaYiN019PkySvjV",
-    "josh": "TxGEqnHWrfWFTfGW9XjX",
-    "adam": "pNInz6obpgDQGcFmaJgB",
-    "sam": "yoZ06aMxZJJ28mfd3POQ",
-}
+# Mistral Voxtral Mini TTS preset voices (via OpenRouter).
+VOXTRAL_VOICES = frozenset(
+    {
+        "casual_female", "casual_male", "cheerful_female",
+        "neutral_female", "neutral_male",
+        "fr_female", "fr_male", "de_female", "de_male",
+        "es_female", "es_male", "it_female", "it_male",
+        "pt_female", "pt_male", "nl_female", "nl_male",
+        "ar_male", "hi_female", "hi_male",
+    }
+)
+VOXTRAL_DEFAULT_VOICE = "cheerful_female"
+OPENAI_DEFAULT_VOICE = "nova"
+
+
+def _default_voice() -> tuple[str, str]:
+    if settings.openrouter_api_key:
+        return "voxtral", VOXTRAL_DEFAULT_VOICE
+    return "openai", OPENAI_DEFAULT_VOICE
 
 
 def resolve_voice(provider: str | None, voice: str | None) -> tuple[str, str]:
     """Return (provider, voice) after validation, falling back to defaults."""
-    if provider == "elevenlabs" and voice and voice in ELEVENLABS_VOICES:
-        if not settings.elevenlabs_api_key:
-            return DEFAULT_TTS_PROVIDER, DEFAULT_TTS_VOICE
-        return "elevenlabs", voice
+    if provider == "voxtral" and voice and voice in VOXTRAL_VOICES:
+        if not settings.openrouter_api_key:
+            return "openai", OPENAI_DEFAULT_VOICE
+        return "voxtral", voice
     if voice and voice in OPENAI_VOICES:
         return "openai", voice
-    return DEFAULT_TTS_PROVIDER, DEFAULT_TTS_VOICE
+    return _default_voice()
 
 
 async def _synthesize_openai(text: str, voice: str) -> bytes:
@@ -138,8 +139,7 @@ def _expand_unit(match: re.Match, singular: str, plural: str) -> str:
 
 def normalize_for_tts(text: str) -> str:
     """Expand kitchen abbreviations, units, fractions, and degree symbols
-    so TTS engines without internal normalization (e.g. ElevenLabs) read
-    them naturally."""
+    so TTS engines without internal normalization read them naturally."""
     out = text
 
     # Unicode fractions
@@ -184,24 +184,22 @@ def normalize_for_tts(text: str) -> str:
     return out
 
 
-async def _synthesize_elevenlabs(text: str, voice_key: str) -> bytes:
-    voice_id = ELEVENLABS_VOICES[voice_key]
+async def _synthesize_voxtral(text: str, voice: str) -> bytes:
+    """Mistral Voxtral Mini TTS via OpenRouter's OpenAI-compatible
+    /audio/speech endpoint."""
+    client = AsyncOpenAI(
+        api_key=settings.openrouter_api_key,
+        base_url=settings.openrouter_base_url,
+    )
     spoken = normalize_for_tts(text)
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-    headers = {
-        "xi-api-key": settings.elevenlabs_api_key,
-        "accept": "audio/mpeg",
-        "content-type": "application/json",
-    }
-    payload = {
-        "text": spoken,
-        "model_id": ELEVENLABS_MODEL,
-        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-    }
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        return resp.content
+    async with client.audio.speech.with_streaming_response.create(
+        model=settings.voxtral_tts_model,
+        voice=voice,
+        input=spoken,
+        response_format="mp3",
+    ) as response:
+        chunks = [chunk async for chunk in response.iter_bytes()]
+    return b"".join(chunks)
 
 
 async def synthesize_speech(
@@ -210,15 +208,14 @@ async def synthesize_speech(
     provider: str | None = None,
 ) -> bytes:
     resolved_provider, resolved_voice = resolve_voice(provider, voice)
-    if resolved_provider == "elevenlabs":
+    if resolved_provider == "voxtral":
         try:
-            return await _synthesize_elevenlabs(text, resolved_voice)
-        except httpx.HTTPStatusError as exc:
+            return await _synthesize_voxtral(text, resolved_voice)
+        except Exception as exc:
             logger.warning(
-                "ElevenLabs TTS failed (%s); falling back to OpenAI Nova",
-                exc.response.status_code,
+                "Voxtral TTS failed (%s); falling back to OpenAI Nova", exc
             )
-            return await _synthesize_openai(text, DEFAULT_TTS_VOICE)
+            return await _synthesize_openai(text, OPENAI_DEFAULT_VOICE)
     return await _synthesize_openai(text, resolved_voice)
 
 

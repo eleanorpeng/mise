@@ -136,11 +136,11 @@ export default function VoicePickerScreen() {
       </Text>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {(['openai', 'elevenlabs'] as const).map((group) => {
+        {(['voxtral', 'openai'] as const).map((group) => {
           const items = ASSISTANT_VOICES.filter((v) => v.provider === group);
           if (items.length === 0) return null;
           const groupLabel =
-            group === 'openai' ? 'OpenAI · gpt-4o-mini-tts' : 'ElevenLabs · Turbo v2.5';
+            group === 'voxtral' ? 'Voxtral · Mini TTS' : 'OpenAI · gpt-4o-mini-tts';
           return (
             <View key={group} style={styles.group}>
               <Text style={styles.groupHeader}>{groupLabel}</Text>

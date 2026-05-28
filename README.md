@@ -43,9 +43,9 @@ The backend routes each AI task to a provider via a small client factory (`backe
 | Text chat — chef chatbot + voice intent | DigitalOcean serverless inference (`DO_INFERENCE_API_KEY`, `CHAT_MODEL`, default `llama3.3-70b-instruct`) | OpenAI |
 | Vision — photo + video recipe import | OpenRouter (`OPENROUTER_API_KEY`, `VISION_MODEL`, default `google/gemini-2.5-pro`) | OpenAI `gpt-4o` |
 | Whisper transcription | OpenAI | — |
-| Text-to-speech — voice cook-along | ElevenLabs (`ELEVENLABS_API_KEY`) | OpenAI TTS |
+| Text-to-speech — voice cook-along | Mistral Voxtral Mini TTS via OpenRouter (`OPENROUTER_API_KEY`, `VOXTRAL_TTS_MODEL`, default `mistralai/voxtral-mini-tts-2603`) | OpenAI TTS |
 
-So with only `OPENAI_API_KEY` set, everything works on OpenAI (TTS aside, which needs `ELEVENLABS_API_KEY`). Setting `DO_INFERENCE_API_KEY` / `OPENROUTER_API_KEY` simply moves those workloads onto sponsored/credit pools without code changes. Optional model overrides: `CHAT_MODEL`, `VISION_MODEL`, `VISION_MODEL_FAST`.
+So with only `OPENAI_API_KEY` set, everything works on OpenAI. Setting `DO_INFERENCE_API_KEY` routes text chat to DigitalOcean; setting `OPENROUTER_API_KEY` routes both vision and TTS to OpenRouter — all without code changes. Optional model overrides: `CHAT_MODEL`, `VISION_MODEL`, `VISION_MODEL_FAST`, `VOXTRAL_TTS_MODEL`.
 
 ---
 
@@ -64,9 +64,8 @@ SUPABASE_JWT_SECRET=<jwt-secret-from-supabase-settings>
 OPENAI_API_KEY=sk-...            # Whisper, plus fallback for chat/vision/TTS
 EDAMAM_APP_ID=...
 EDAMAM_APP_KEY=...
-ELEVENLABS_API_KEY=...           # voice cook-along text-to-speech
 DO_INFERENCE_API_KEY=...         # optional — routes text chat to DigitalOcean credits
-OPENROUTER_API_KEY=sk-or-...     # optional — routes vision (photo/video import) to OpenRouter
+OPENROUTER_API_KEY=sk-or-...     # optional — routes vision (import) + TTS (cook-along) to OpenRouter
 ```
 
 `SUPABASE_URL` must match `EXPO_PUBLIC_SUPABASE_URL` in the frontend, or the two sides authenticate as different users. Only `OPENAI_API_KEY` is required for AI features — the rest are optional (see **AI providers**).
