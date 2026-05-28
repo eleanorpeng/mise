@@ -149,51 +149,23 @@ Health check: `GET /health` → `{"status":"ok"}`. The bare URL returning `{"det
 
 ## Verifying the connection
 
-Before opening the app, confirm everything is wired up:
+Before opening the app, confirm the backend you're pointing at is reachable.
+
+**Option A — hosted backend.** Open the deployed health URL in any browser:
+
+```
+https://<deployment>.ondigitalocean.app/health
+```
+
+It should return `{"status":"ok"}`. That's the same URL your `EXPO_PUBLIC_API_URL` points at (minus `/health`), so if it loads, the app can reach it too.
+
+**Option B — local backend.** From your Mac:
 
 ```bash
-# from your Mac
 curl http://localhost:8000/health
 ```
 
-Then on your **phone's browser**, open:
-
-```
-http://<YOUR_MAC_LAN_IP>:8000/docs
-```
-
-If FastAPI's Swagger page loads on your phone, the app will be able to reach the backend too.
-
----
-
-## Common issues
-
-### "Network request failed"
-
-In order of likelihood:
-1. `.env` still says `localhost`. Use your LAN IP.
-2. Forgot `-c` after editing `.env`. Stop Metro, run `npx expo start -c`. `EXPO_PUBLIC_*` values are baked in at bundler start, not on hot reload.
-3. Backend started without `--host 0.0.0.0`.
-4. Phone and Mac are on different Wi-Fi (or the network has client isolation).
-5. macOS firewall is blocking inbound. System Settings → Network → Firewall.
-
-### 401 Unauthorized on `/recipes/`
-
-Backend returned `307 → /recipes/` and the HTTP client dropped the `Authorization` header on the redirect. Make sure all API calls include the trailing slash for router-root paths (already fixed in `services/recipes.ts`, `services/planner.ts`).
-
-### "Could not find table 'public.X' in the schema cache"
-
-You haven't run that table's migration yet. Run the SQL files in `backend/` in the Supabase SQL editor (see step 4).
-
-### "I have to log in again every reload"
-
-Session persistence is wired in `lib/supabase.ts` (AsyncStorage + AppState). If you're still seeing it:
-- Expo Go sandboxes AsyncStorage — uninstalling Expo Go wipes the session.
-- If your refresh token expired before the AppState wiring landed, log in once more.
-
-### Recipe detail shows only the title and photo
-
-The list endpoint returns summaries (no ingredients/steps). The detail screen fetches the full record from `/recipes/{id}` — if that's failing, check uvicorn logs for the request line.
+Then on your **phone's browser**, open `http://<YOUR_MAC_LAN_IP>:8000/docs`. If FastAPI's Swagger page loads on your phone, the app will be able to reach the backend too.
 
 ---
 
@@ -210,7 +182,7 @@ npm run lint          # eslint
 # Backend (from backend/)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# Diagnostics
+# Diagnostics (Option B — local backend)
 ipconfig getifaddr en0                   # your Mac's LAN IP
 curl http://localhost:8000/health        # is backend up?
 ```
