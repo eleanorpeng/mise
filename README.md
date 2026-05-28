@@ -6,6 +6,18 @@ See `CLAUDE.md` for the full feature spec and `DESIGN_SYSTEM.md` for the visual 
 
 ---
 
+## TL;DR
+
+```bash
+npm install --legacy-peer-deps
+cp .env.example .env
+npx expo start -c
+```
+
+Then scan the QR with Expo Go.
+
+---
+
 ## Quickstart
 
 The backend (and all its API keys) is hosted on **DigitalOcean App Platform**, so you only run the frontend. No Python, database, or API keys to set up.
