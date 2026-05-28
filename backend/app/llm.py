@@ -45,3 +45,21 @@ def vision_model(fast: bool = False) -> str:
     if settings.openrouter_api_key:
         return settings.vision_model_fast if fast else settings.vision_model
     return "gpt-4o-mini" if fast else "gpt-4o"
+
+
+def transcribe_client() -> AsyncOpenAI:
+    """Client for speech-to-text. Routes to OpenRouter (Voxtral Mini
+    Transcribe) when configured, otherwise OpenAI Whisper."""
+    if settings.openrouter_api_key:
+        return AsyncOpenAI(
+            api_key=settings.openrouter_api_key,
+            base_url=settings.openrouter_base_url,
+        )
+    return AsyncOpenAI(api_key=settings.openai_api_key)
+
+
+def transcribe_model() -> str:
+    """Model slug for transcription — provider-specific."""
+    if settings.openrouter_api_key:
+        return settings.transcribe_model
+    return "whisper-1"

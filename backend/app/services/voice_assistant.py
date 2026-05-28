@@ -11,7 +11,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from app.config import settings
-from app.llm import chat_client
+from app.llm import chat_client, transcribe_client, transcribe_model
 
 logger = logging.getLogger(__name__)
 
@@ -344,11 +344,14 @@ def match_keyword_intent(
 
 
 async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.m4a") -> str:
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = transcribe_client()
     f = BytesIO(audio_bytes)
     f.name = filename
-    result = await client.audio.transcriptions.create(model="whisper-1", file=f)
-    return (result.text or "").strip()
+    result = await client.audio.transcriptions.create(
+        model=transcribe_model(), file=f
+    )
+    text = result if isinstance(result, str) else result.text
+    return (text or "").strip()
 
 
 async def process_voice_turn(

@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # via OpenRouter when OPENROUTER_API_KEY is set; otherwise OpenAI TTS.
     voxtral_tts_model: str = "mistralai/voxtral-mini-tts-2603"
 
+    # Speech-to-text (video import + voice cook-along). Routes to Mistral
+    # Voxtral Mini Transcribe via OpenRouter when set; otherwise OpenAI Whisper.
+    transcribe_model: str = "mistralai/voxtral-mini-transcribe"
+
     model_config = {"env_file": str(_ENV_FILE)}
 
 
