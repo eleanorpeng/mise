@@ -8,115 +8,29 @@ See `CLAUDE.md` for the full feature spec and `DESIGN_SYSTEM.md` for the visual 
 
 ## Quickstart
 
-The backend is deployed on **DigitalOcean App Platform**, so there are two ways to run the app:
+The backend (and all its API keys) is hosted on **DigitalOcean App Platform**, so you only run the frontend. No Python, database, or API keys to set up.
 
-- **Option A — Frontend only, against the hosted backend.** Fastest path. No Python, database, or backend API keys needed. Best for working on the app itself.
-- **Option B — Full local stack.** Run the FastAPI backend yourself. Needed for backend changes.
+The whole app runs in **Expo Go** — there are no custom native modules, so no development build is required.
 
-The whole app runs in **Expo Go** — there are no custom native modules, so no development build is required either way.
-
-### Option A — Frontend against the hosted backend
-
-1. Install frontend deps: `npm install --legacy-peer-deps`
-2. In the repo-root `.env`, point at the deployed backend:
+1. Install frontend deps:
+   ```bash
+   npm install --legacy-peer-deps
+   ```
+2. Copy `.env.example` to `.env` at the repo root and fill in the hosted backend values:
    ```
    EXPO_PUBLIC_API_URL=https://<deployment>.ondigitalocean.app
    EXPO_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
    EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon-or-publishable-key>
    ```
    (No trailing slash on the API URL.)
-3. `npx expo start -c`
+3. Start Expo:
+   ```bash
+   npx expo start -c
+   ```
+   The `-c` matters — `EXPO_PUBLIC_*` values are baked in at bundler start, so `.env` changes only take effect on a fresh start, not hot reload.
 4. Scan the QR with **Expo Go** (or press `i` for iOS sim, `a` for Android emulator).
 
-### Option B — Full local stack
-
-Run the backend and Expo in **two terminals at the same time**:
-
-**Terminal 1 — Backend**
-
-```bash
-cd backend
-source .venv/bin/activate              # create with: python -m venv .venv
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-**Terminal 2 — Frontend**
-
-```bash
-npx expo start -c
-```
-
-For this path, set `EXPO_PUBLIC_API_URL` to your Mac's LAN IP (`http://<LAN_IP>:8000`) — **not** `localhost` — so your phone can reach the backend (see First-time setup).
-
-> ⚠️ The two flags that catch people out: `--host 0.0.0.0` on uvicorn (so your phone can reach it) and `-c` on `expo start` (so `.env` changes get picked up). Skip either and things break in confusing ways.
-
----
-
-## First-time setup
-
-Steps 1–2 apply to everyone. **Steps 3–4 (backend env + database) are only needed for Option B** (running the backend locally) — skip them if you're using the hosted backend.
-
-### 1. Install dependencies
-
-```bash
-# repo root — frontend (everyone)
-npm install --legacy-peer-deps
-
-# backend (Option B only)
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### 2. Frontend `.env`
-
-Copy `.env.example` to `.env` at the repo root and fill in:
-
-```
-EXPO_PUBLIC_API_URL=http://<YOUR_MAC_LAN_IP>:8000
-EXPO_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=<your-anon-or-publishable-key>
-```
-
-Find your Mac's LAN IP with:
-
-```bash
-ipconfig getifaddr en0
-```
-
-> Do **not** use `http://localhost:8000`. Your phone runs the JS bundle locally — `localhost` resolves to the *phone*, not your Mac.
-
-### 3. Backend `backend/.env` *(Option B only)*
-
-Copy `backend/.env.example` to `backend/.env` and fill in:
-
-```
-SUPABASE_URL=https://<your-project>.supabase.co
-SUPABASE_SERVICE_KEY=<service-role-key>
-SUPABASE_JWT_SECRET=<jwt-secret-from-supabase-settings>
-OPENAI_API_KEY=sk-...            # Whisper, plus fallback for chat/vision/TTS
-EDAMAM_APP_ID=...
-EDAMAM_APP_KEY=...
-ELEVENLABS_API_KEY=...           # voice cook-along text-to-speech
-DO_INFERENCE_API_KEY=...         # optional — routes text chat to DigitalOcean credits
-OPENROUTER_API_KEY=sk-or-...     # optional — routes vision (photo/video import) to OpenRouter
-```
-
-`SUPABASE_URL` here must match `EXPO_PUBLIC_SUPABASE_URL` in the frontend — otherwise you'll be authenticated as different users on each side.
-
-Only `OPENAI_API_KEY` is required for AI features to work — the other AI keys are optional and just shift specific workloads onto other providers (see **AI providers** below).
-
-### 4. Database *(Option B only)*
-
-In Supabase Dashboard → SQL Editor, run each migration in order:
-
-1. `backend/supabase_migration.sql` (base schema)
-2. `backend/supabase_migration_collections.sql`
-3. `backend/supabase_migration_cook_log.sql`
-4. `backend/supabase_migration_profiles.sql` (needed for onboarding + the chef's preference memory)
-
-After running migrations, open Supabase **API Docs** in the dashboard once — that forces PostgREST to refresh its schema cache.
+That's it. To verify the backend is reachable, open `https://<deployment>.ondigitalocean.app/health` in a browser — it should return `{"status":"ok"}`.
 
 ---
 
@@ -135,56 +49,70 @@ So with only `OPENAI_API_KEY` set, everything works on OpenAI (TTS aside, which 
 
 ---
 
-## Deploying the backend (DigitalOcean App Platform)
+## Running or deploying the backend yourself
+
+> Only needed if you're changing the backend. Running the app against the hosted backend (Quickstart) needs none of this.
+
+### Backend env (`backend/.env`)
+
+Copy `backend/.env.example` to `backend/.env` and fill in:
+
+```
+SUPABASE_URL=https://<your-project>.supabase.co
+SUPABASE_SERVICE_KEY=<service-role-key>
+SUPABASE_JWT_SECRET=<jwt-secret-from-supabase-settings>
+OPENAI_API_KEY=sk-...            # Whisper, plus fallback for chat/vision/TTS
+EDAMAM_APP_ID=...
+EDAMAM_APP_KEY=...
+ELEVENLABS_API_KEY=...           # voice cook-along text-to-speech
+DO_INFERENCE_API_KEY=...         # optional — routes text chat to DigitalOcean credits
+OPENROUTER_API_KEY=sk-or-...     # optional — routes vision (photo/video import) to OpenRouter
+```
+
+`SUPABASE_URL` must match `EXPO_PUBLIC_SUPABASE_URL` in the frontend, or the two sides authenticate as different users. Only `OPENAI_API_KEY` is required for AI features — the rest are optional (see **AI providers**).
+
+### Database
+
+In Supabase Dashboard → SQL Editor, run each migration in order:
+
+1. `backend/supabase_migration.sql` (base schema)
+2. `backend/supabase_migration_collections.sql`
+3. `backend/supabase_migration_cook_log.sql`
+4. `backend/supabase_migration_profiles.sql` (onboarding + the chef's preference memory)
+
+Then open Supabase **API Docs** once — that forces PostgREST to refresh its schema cache.
+
+### Run locally
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Point the app at it by setting `EXPO_PUBLIC_API_URL` to your Mac's LAN IP (`http://<LAN_IP>:8000`, find it with `ipconfig getifaddr en0`) — **not** `localhost`, which resolves to the phone, not your Mac. Restart Expo with `npx expo start -c` after changing `.env`. Both flags matter: `--host 0.0.0.0` so your phone can reach uvicorn, and `-c` so `.env` changes get picked up.
+
+### Deploy (DigitalOcean App Platform)
 
 The backend includes a `Dockerfile` (adds `ffmpeg` for video import and the image libs `rembg` needs for sticker cut-outs).
 
 1. Push to GitHub, then create an App on **DigitalOcean App Platform** from the repo with **source directory `backend`** — it builds from `backend/Dockerfile` and serves on port `8080`.
-2. Add the same variables from `backend/.env` in the App Platform console (Settings → Environment Variables).
-3. Point the app at it: set `EXPO_PUBLIC_API_URL` to the deployed URL (e.g. `https://<app>.ondigitalocean.app`, no trailing slash) and restart Expo with `npx expo start -c`.
+2. Add the `backend/.env` variables in the App Platform console (Settings → Environment Variables).
+3. Set the frontend `EXPO_PUBLIC_API_URL` to the deployed URL (no trailing slash) and restart Expo with `npx expo start -c`.
 
 Health check: `GET /health` → `{"status":"ok"}`. The bare URL returning `{"detail":"Not Found"}` is expected — there's no root route, only `/health` and the prefixed routers.
-
----
-
-## Verifying the connection
-
-Before opening the app, confirm the backend you're pointing at is reachable.
-
-**Option A — hosted backend.** Open the deployed health URL in any browser:
-
-```
-https://<deployment>.ondigitalocean.app/health
-```
-
-It should return `{"status":"ok"}`. That's the same URL your `EXPO_PUBLIC_API_URL` points at (minus `/health`), so if it loads, the app can reach it too.
-
-**Option B — local backend.** From your Mac:
-
-```bash
-curl http://localhost:8000/health
-```
-
-Then on your **phone's browser**, open `http://<YOUR_MAC_LAN_IP>:8000/docs`. If FastAPI's Swagger page loads on your phone, the app will be able to reach the backend too.
 
 ---
 
 ## Useful commands
 
 ```bash
-# Frontend
 npm run start         # expo start
 npm run ios           # iOS simulator
 npm run android       # Android emulator
 npm run typecheck     # tsc --noEmit
 npm run lint          # eslint
-
-# Backend (from backend/)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Diagnostics (Option B — local backend)
-ipconfig getifaddr en0                   # your Mac's LAN IP
-curl http://localhost:8000/health        # is backend up?
 ```
 
 ---
