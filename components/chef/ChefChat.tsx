@@ -24,6 +24,8 @@ import {
 } from '@/services/chef';
 import { useRecipesStore } from '@/store/recipes';
 import { useProfileStore } from '@/store/profile';
+import { useChefHistoryStore } from '@/store/chefHistory';
+import { ChefHistorySheet } from './ChefHistorySheet';
 
 interface Turn {
   id: string;
@@ -210,11 +212,33 @@ export function ChefChat() {
   const [savedId, setSavedId] = useState<string | null>(null);
   const [streamingId, setStreamingId] = useState<string | null>(null);
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const hydrateHistory = useChefHistoryStore((s) => s.hydrate);
+  const historyHydrated = useChefHistoryStore((s) => s.hydrated);
+  const startNewConvo = useChefHistoryStore((s) => s.startNew);
+  const setCurrentConvo = useChefHistoryStore((s) => s.setCurrent);
+  const saveTurnsToHistory = useChefHistoryStore((s) => s.saveTurns);
+
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const isResponding = pending || streamingId !== null;
+
+  // Hydrate on mount and lift the active conversation's turns into local state.
+  // After this, local `turns` is the source of truth and we persist it back
+  // through saveTurnsToHistory at meaningful points (after send, after done).
+  useEffect(() => {
+    if (historyHydrated) return;
+    hydrateHistory().then(() => {
+      const { currentId, conversations } = useChefHistoryStore.getState();
+      if (currentId) {
+        const convo = conversations.find((c) => c.id === currentId);
+        if (convo) setTurns(convo.turns);
+      }
+    });
+  }, [historyHydrated, hydrateHistory]);
 
   const scrollToEnd = () => {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
@@ -222,9 +246,13 @@ export function ChefChat() {
 
   const send = async (text: string, priorTurns: Turn[]) => {
     setError(null);
+    if (!useChefHistoryStore.getState().currentId) {
+      startNewConvo();
+    }
     const userTurn: Turn = { id: nextId(), role: 'user', content: text };
     const withUser = [...priorTurns, userTurn];
     setTurns(withUser);
+    saveTurnsToHistory(withUser);
     setPending(true);
     scrollToEnd();
 
@@ -274,34 +302,17 @@ export function ChefChat() {
         },
         onDone: (final) => {
           if (controller.signal.aborted) return;
-          if (!assistantId) {
-            const newId = nextId();
-            assistantId = newId;
-            setTurns((prev) => [
-              ...prev,
-              {
-                id: newId,
-                role: 'assistant',
-                content: final.reply,
-                recipe: final.recipe,
-                suggestions: final.suggestions,
-              },
-            ]);
-          } else {
-            const id = assistantId;
-            setTurns((prev) =>
-              prev.map((t) =>
-                t.id === id
-                  ? {
-                      ...t,
-                      content: final.reply,
-                      recipe: final.recipe,
-                      suggestions: final.suggestions,
-                    }
-                  : t,
-              ),
-            );
-          }
+          if (!assistantId) assistantId = nextId();
+          const finalTurn: Turn = {
+            id: assistantId,
+            role: 'assistant',
+            content: final.reply,
+            recipe: final.recipe,
+            suggestions: final.suggestions,
+          };
+          const nextTurns: Turn[] = [...withUser, finalTurn];
+          setTurns(nextTurns);
+          saveTurnsToHistory(nextTurns);
           setStreamingId(null);
 
           if (final.learned) {
@@ -357,12 +368,39 @@ export function ChefChat() {
   };
 
   const handleNewChat = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setCurrentConvo(null);
     setTurns([]);
     setDraft('');
     setError(null);
     setStreamingId(null);
+    setPending(false);
     setSavingId(null);
     setSavedId(null);
+  };
+
+  const handleOpenConversation = (id: string) => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    const convo = useChefHistoryStore
+      .getState()
+      .conversations.find((c) => c.id === id);
+    if (!convo) return;
+    setCurrentConvo(id);
+    setTurns(convo.turns);
+    setDraft('');
+    setError(null);
+    setStreamingId(null);
+    setPending(false);
+    setSavingId(null);
+    setSavedId(null);
+    setHistoryOpen(false);
+    scrollToEnd();
   };
 
   const handleSave = async (turn: Turn) => {
@@ -388,12 +426,25 @@ export function ChefChat() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
     >
-      {turns.length > 0 ? (
-        <View style={styles.chatHeader}>
+      <View style={styles.chatHeader}>
+        <TouchableOpacity
+          onPress={() => setHistoryOpen(true)}
+          hitSlop={10}
+          style={styles.headerBtn}
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons
+            name="history"
+            size={16}
+            color={colors.umber}
+          />
+          <Text style={styles.headerBtnText}>History</Text>
+        </TouchableOpacity>
+        {turns.length > 0 ? (
           <TouchableOpacity
             onPress={handleNewChat}
             hitSlop={10}
-            style={styles.newChatBtn}
+            style={styles.headerBtn}
             activeOpacity={0.8}
           >
             <MaterialCommunityIcons
@@ -401,10 +452,10 @@ export function ChefChat() {
               size={16}
               color={colors.umber}
             />
-            <Text style={styles.newChatText}>New chat</Text>
+            <Text style={styles.headerBtnText}>New chat</Text>
           </TouchableOpacity>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
 
       {isEmpty ? (
         <View style={styles.emptyWrap}>
@@ -518,6 +569,12 @@ export function ChefChat() {
           </TouchableOpacity>
         )}
       </View>
+
+      <ChefHistorySheet
+        visible={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onOpenConversation={handleOpenConversation}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -527,11 +584,12 @@ const styles = StyleSheet.create({
 
   chatHeader: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.lg,
   },
-  newChatBtn: {
+  headerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -540,7 +598,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colors.linen,
   },
-  newChatText: {
+  headerBtnText: {
     fontFamily: fonts.bodyMedium,
     fontSize: 12,
     color: colors.umber,
