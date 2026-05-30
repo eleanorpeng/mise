@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Image,
   ActivityIndicator,
   TouchableOpacity,
   LayoutAnimation,
@@ -23,6 +22,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, typeScale, spacing, radius } from '@/constants';
 import { Chip } from '@/components/ui/Chip';
+import { RecipeCover } from '@/components/recipe/RecipeCover';
 import { AddToCollectionSheet } from '@/components/recipe/AddToCollectionSheet';
 import { AddToPlanSheet } from '@/components/recipe/AddToPlanSheet';
 import { useRecipesStore } from '@/store/recipes';
@@ -254,17 +254,7 @@ export default function RecipeDetailScreen() {
           </View>
         </View>
 
-        {recipe.coverImageUrl ? (
-          <Image source={{ uri: recipe.coverImageUrl }} style={styles.cover} />
-        ) : (
-          <View style={[styles.cover, styles.coverFallback]}>
-            <MaterialCommunityIcons
-              name="silverware-fork-knife"
-              size={32}
-              color={colors.umber}
-            />
-          </View>
-        )}
+        <RecipeCover recipe={recipe} style={styles.cover} letterSize={140} />
 
         <View style={styles.headerBlock}>
           <Text style={styles.title}>{recipe.title}</Text>
@@ -738,10 +728,6 @@ const styles = StyleSheet.create({
     aspectRatio: 4 / 3,
     backgroundColor: colors.linen,
     marginTop: spacing.lg,
-  },
-  coverFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   headerBlock: {

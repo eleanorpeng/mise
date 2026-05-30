@@ -1,19 +1,8 @@
-import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, fonts, typeScale, spacing, radius } from '@/constants';
 import type { Recipe } from '@/types';
-
-const CUISINE_COLORS: Record<string, [string, string]> = {
-  Italian:   [colors.ember,   colors.rust],
-  Korean:    [colors.peach,   colors.ember],
-  Japanese:  [colors.sand,    colors.umber],
-  Levantine: [colors.butter,  colors.peach],
-  Side:      [colors.linen,   colors.sand],
-};
-
-function getPlaceholderColors(cuisine?: string): [string, string] {
-  return (cuisine ? CUISINE_COLORS[cuisine] : undefined) ?? [colors.ember, colors.rust];
-}
+import { RecipeCover } from './RecipeCover';
 
 interface RecipeCardProps {
   recipe: Recipe;
@@ -23,7 +12,6 @@ interface RecipeCardProps {
 
 export function RecipeCard({ recipe, width = 200, onLongPress }: RecipeCardProps) {
   const router = useRouter();
-  const [baseColor, overlayColor] = getPlaceholderColors(recipe.cuisine);
 
   return (
     <TouchableOpacity
@@ -33,18 +21,7 @@ export function RecipeCard({ recipe, width = 200, onLongPress }: RecipeCardProps
       delayLongPress={350}
       activeOpacity={0.85}
     >
-      <View style={styles.imageWrapper}>
-        {recipe.coverImageUrl ? (
-          <Image source={{ uri: recipe.coverImageUrl }} style={styles.image} />
-        ) : (
-          <View style={[styles.image, { backgroundColor: baseColor }]}>
-            {/* Diagonal stripe texture */}
-            <View style={styles.stripes} />
-            {/* Dark overlay for gradient depth */}
-            <View style={[styles.gradientOverlay, { backgroundColor: overlayColor }]} />
-          </View>
-        )}
-      </View>
+      <RecipeCover recipe={recipe} style={styles.image} letterSize={68} />
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={2}>{recipe.title}</Text>
         <Text style={styles.meta}>
@@ -65,24 +42,9 @@ const styles = StyleSheet.create({
     borderColor: colors.borderResting,
     overflow: 'hidden',
   },
-  imageWrapper: { position: 'relative' },
   image: {
     width: '100%',
     height: 140,
-  },
-  stripes: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.12,
-    // subtle diagonal lines via repeating pattern approximation
-    backgroundColor: 'transparent',
-    borderColor: 'rgba(255,255,255,0.4)',
-    transform: [{ rotate: '115deg' }, { scaleX: 10 }],
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-  },
-  gradientOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.45,
   },
   body: {
     padding: spacing.md,
