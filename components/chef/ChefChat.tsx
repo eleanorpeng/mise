@@ -83,6 +83,54 @@ function AssistantText({
   return <Text style={styles.assistantText}>{shown}</Text>;
 }
 
+function StopButton({ onPress }: { onPress: () => void }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(scale, {
+            toValue: 0.88,
+            duration: 650,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scale, {
+            toValue: 1,
+            duration: 650,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(opacity, {
+            toValue: 0.75,
+            duration: 650,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 650,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [scale, opacity]);
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={styles.send}>
+      <Animated.View
+        style={[styles.stopGlyph, { transform: [{ scale }], opacity }]}
+      />
+    </TouchableOpacity>
+  );
+}
+
 function ThinkingDots() {
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -194,6 +242,9 @@ export function ChefChat() {
 
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const isResponding = pending || streamingId !== null;
 
   const scrollToEnd = () => {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
@@ -222,8 +273,11 @@ export function ChefChat() {
         }
       : undefined;
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const res = await chefService.chat(apiMessages, profileContext);
+      const res = await chefService.chat(apiMessages, profileContext, controller.signal);
       const assistantId = nextId();
       setStreamingId(assistantId);
       setTurns((prev) => [
@@ -258,8 +312,10 @@ export function ChefChat() {
         }
       }
     } catch (err: any) {
+      if (err?.name === 'AbortError' || controller.signal.aborted) return;
       setError(err?.message || 'The chef is unavailable. Try again.');
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setPending(false);
       scrollToEnd();
     }
@@ -267,9 +323,18 @@ export function ChefChat() {
 
   const handleSend = () => {
     const text = draft.trim();
-    if (!text || pending) return;
+    if (!text || isResponding) return;
     setDraft('');
     send(text, turns);
+  };
+
+  const handleStop = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setPending(false);
+    setStreamingId(null);
   };
 
   const handleNewChat = () => {
@@ -426,14 +491,18 @@ export function ChefChat() {
           returnKeyType="send"
           onSubmitEditing={handleSend}
         />
-        <TouchableOpacity
-          style={[styles.send, (!draft.trim() || pending) && styles.sendDisabled]}
-          activeOpacity={0.85}
-          onPress={handleSend}
-          disabled={!draft.trim() || pending}
-        >
-          <MaterialCommunityIcons name="arrow-up" size={20} color={colors.textOnDark} />
-        </TouchableOpacity>
+        {isResponding ? (
+          <StopButton onPress={handleStop} />
+        ) : (
+          <TouchableOpacity
+            style={[styles.send, !draft.trim() && styles.sendDisabled]}
+            activeOpacity={0.85}
+            onPress={handleSend}
+            disabled={!draft.trim()}
+          >
+            <MaterialCommunityIcons name="arrow-up" size={20} color={colors.textOnDark} />
+          </TouchableOpacity>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -658,4 +727,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendDisabled: { opacity: 0.4 },
+  stopGlyph: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    backgroundColor: colors.textOnDark,
+  },
 });

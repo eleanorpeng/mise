@@ -60,8 +60,8 @@ export interface ChefChatResponse {
 }
 
 export const chefService = {
-  chat: (messages: ChatMessage[], profile?: ProfileContext) =>
-    api.post<ChefChatResponse>('/chef/chat', { messages, profile }),
+  chat: (messages: ChatMessage[], profile?: ProfileContext, signal?: AbortSignal) =>
+    api.post<ChefChatResponse>('/chef/chat', { messages, profile }, { signal }),
 
   save: (recipe: RecipeExtraction) => api.post<Recipe>('/chef/save', recipe),
 };

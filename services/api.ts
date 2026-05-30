@@ -45,11 +45,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+interface RequestOpts {
+  signal?: AbortSignal;
+}
+
 export const api = {
-  get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
-  patch: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
-  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  get: <T>(path: string, opts?: RequestOpts) => request<T>(path, { signal: opts?.signal }),
+  post: <T>(path: string, body: unknown, opts?: RequestOpts) =>
+    request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal }),
+  patch: <T>(path: string, body: unknown, opts?: RequestOpts) =>
+    request<T>(path, { method: 'PATCH', body: JSON.stringify(body), signal: opts?.signal }),
+  delete: <T>(path: string, opts?: RequestOpts) =>
+    request<T>(path, { method: 'DELETE', signal: opts?.signal }),
 };
