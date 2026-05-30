@@ -241,13 +241,9 @@ async def import_from_url(
 
         _update_job_status(job_id, "synthesising")
 
-        # Upload thumbnail
-        cover_url = None
-        if result.thumbnail_path and result.thumbnail_path.exists():
-            cover_url = _upload_thumbnail(result.thumbnail_path, job_id)
-
-        # Persist to normalized tables and assemble the response in-memory.
-        full_recipe = _persist_recipe(user_id, result.extraction, url, cover_url)
+        # Recipes default to the colored placeholder cover. Users opt into a
+        # photo via the upload action on the recipe detail screen.
+        full_recipe = _persist_recipe(user_id, result.extraction, url, cover_url=None)
 
         _update_job_status(job_id, "done", recipe_id=full_recipe["id"])
         return full_recipe
@@ -298,9 +294,8 @@ async def import_from_photo(
 
     try:
         extraction = await extract_recipe_from_photo(image_bytes, mime, caption=caption)
-        cover_url = _upload_thumbnail_bytes(image_bytes, job_id, mime)
         full_recipe = _persist_recipe(
-            user_id, extraction, source_url="", cover_url=cover_url, source_type="photo",
+            user_id, extraction, source_url="", cover_url=None, source_type="photo",
         )
         _update_job_status(job_id, "done", recipe_id=full_recipe["id"])
         return full_recipe

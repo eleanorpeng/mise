@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
   Platform,
   UIManager,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 
 if (
   Platform.OS === 'android' &&
@@ -95,6 +97,9 @@ export default function RecipeDetailScreen() {
     'per-serving',
   );
 
+  const replaceInStore = useRecipesStore((s) => s.replace);
+  const [coverBusy, setCoverBusy] = useState(false);
+
   const collections = useCollectionsStore((s) => s.collections);
   const collectionsForRecipe = collections.filter((c) =>
     id ? c.recipeIds.includes(id) : false,
@@ -124,6 +129,64 @@ export default function RecipeDetailScreen() {
         return next;
       });
     });
+  };
+
+  const pickAndUploadCover = async () => {
+    if (!recipe || coverBusy) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Photo access needed', 'Allow photo library access to set a cover.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setCoverBusy(true);
+    try {
+      const updated = await recipesService.uploadCover(recipe.id, {
+        uri: asset.uri,
+        mimeType: asset.mimeType ?? 'image/jpeg',
+        fileName: asset.fileName ?? null,
+      });
+      setRecipe(updated);
+      replaceInStore(updated);
+    } catch (err: any) {
+      Alert.alert('Could not save cover', err?.message ?? 'Try again in a moment.');
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
+  const removeCover = async () => {
+    if (!recipe || coverBusy) return;
+    setCoverBusy(true);
+    try {
+      const updated = await recipesService.removeCover(recipe.id);
+      setRecipe(updated);
+      replaceInStore(updated);
+    } catch (err: any) {
+      Alert.alert('Could not remove cover', err?.message ?? 'Try again in a moment.');
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
+  const handleEditCover = () => {
+    if (!recipe || coverBusy) return;
+    if (recipe.coverImageUrl) {
+      Alert.alert('Recipe cover', undefined, [
+        { text: 'Replace photo', onPress: pickAndUploadCover },
+        { text: 'Remove photo', onPress: removeCover, style: 'destructive' },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else {
+      pickAndUploadCover();
+    }
   };
 
   const handleAddAllIngredientsToGrocery = () => {
@@ -254,7 +317,30 @@ export default function RecipeDetailScreen() {
           </View>
         </View>
 
-        <RecipeCover recipe={recipe} style={styles.cover} letterSize={140} />
+        <TouchableOpacity
+          activeOpacity={0.92}
+          onPress={handleEditCover}
+          disabled={coverBusy}
+          style={styles.coverWrap}
+        >
+          <RecipeCover recipe={recipe} style={styles.cover} letterSize={140} />
+          <View style={styles.coverBadge}>
+            {coverBusy ? (
+              <ActivityIndicator size="small" color={colors.espresso} />
+            ) : (
+              <>
+                <MaterialCommunityIcons
+                  name={recipe.coverImageUrl ? 'image-edit-outline' : 'image-plus'}
+                  size={14}
+                  color={colors.espresso}
+                />
+                <Text style={styles.coverBadgeText}>
+                  {recipe.coverImageUrl ? 'Edit cover' : 'Add photo'}
+                </Text>
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
 
         <View style={styles.headerBlock}>
           <Text style={styles.title}>{recipe.title}</Text>
@@ -723,11 +809,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  coverWrap: {
+    marginTop: spacing.lg,
+    position: 'relative',
+  },
   cover: {
     width: '100%',
     aspectRatio: 4 / 3,
     backgroundColor: colors.linen,
-    marginTop: spacing.lg,
+  },
+  coverBadge: {
+    position: 'absolute',
+    bottom: spacing.md,
+    right: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(245, 239, 224, 0.92)',
+  },
+  coverBadgeText: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    color: colors.espresso,
   },
 
   headerBlock: {

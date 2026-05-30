@@ -1,10 +1,27 @@
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+import secrets
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app.auth import get_current_user
 from app.database import supabase, maybe_single
 from app.schemas import row_to_camel
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+_COVER_BUCKET = "thumbnails"
+_COVER_EXT_BY_MIME = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/heic": "heic",
+    "image/heif": "heif",
+}
+_MAX_COVER_BYTES = 8 * 1024 * 1024  # 8 MB
 
 
 def assemble_recipe(recipe_id: str, user_id: str) -> dict:
@@ -133,3 +150,87 @@ async def create_recipe(data: dict, user_id: str = Depends(get_current_user)):
 @router.delete("/{recipe_id}", status_code=204)
 async def delete_recipe(recipe_id: str, user_id: str = Depends(get_current_user)):
     supabase.table("recipes").delete().eq("id", recipe_id).eq("user_id", user_id).execute()
+
+
+def _check_recipe_ownership(recipe_id: str, user_id: str) -> dict:
+    row = maybe_single(
+        supabase.table("recipes")
+        .select("id, cover_image_url")
+        .eq("id", recipe_id)
+        .eq("user_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    if not row:
+        raise HTTPException(404, "Recipe not found")
+    return row
+
+
+def _cover_path_from_url(url: str | None) -> str | None:
+    """Pull the storage path back out of a public Supabase URL, if it lives in
+    our cover bucket. Returns None for foreign URLs (e.g. legacy yt thumbnails)
+    so we don't try to delete what we don't own."""
+    if not url:
+        return None
+    marker = f"/storage/v1/object/public/{_COVER_BUCKET}/"
+    idx = url.find(marker)
+    if idx < 0:
+        return None
+    return url[idx + len(marker):].split("?", 1)[0]
+
+
+@router.post("/{recipe_id}/cover")
+async def upload_cover(
+    recipe_id: str,
+    image: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+):
+    existing = _check_recipe_ownership(recipe_id, user_id)
+
+    mime = (image.content_type or "image/jpeg").lower()
+    ext = _COVER_EXT_BY_MIME.get(mime)
+    if not ext:
+        raise HTTPException(400, "Unsupported image type")
+
+    body = await image.read()
+    if not body:
+        raise HTTPException(400, "Empty upload")
+    if len(body) > _MAX_COVER_BYTES:
+        raise HTTPException(413, "Image is too large (max 8 MB)")
+
+    # Random suffix forces a fresh public URL so the client doesn't show a
+    # stale cached image after a re-upload.
+    storage_path = f"{recipe_id}-{secrets.token_hex(4)}.{ext}"
+    try:
+        supabase.storage.from_(_COVER_BUCKET).upload(
+            storage_path, body, file_options={"content-type": mime},
+        )
+    except Exception:
+        logger.exception("Cover upload failed for %s", recipe_id)
+        raise HTTPException(502, "Could not save the cover image")
+
+    public_url = supabase.storage.from_(_COVER_BUCKET).get_public_url(storage_path)
+    supabase.table("recipes").update({"cover_image_url": public_url}).eq("id", recipe_id).execute()
+
+    # Best-effort delete of the previous cover if it was one of ours.
+    prev_path = _cover_path_from_url(existing.get("cover_image_url"))
+    if prev_path and prev_path != storage_path:
+        try:
+            supabase.storage.from_(_COVER_BUCKET).remove([prev_path])
+        except Exception:
+            logger.warning("Could not remove old cover %s", prev_path, exc_info=True)
+
+    return assemble_recipe(recipe_id, user_id)
+
+
+@router.delete("/{recipe_id}/cover")
+async def remove_cover(recipe_id: str, user_id: str = Depends(get_current_user)):
+    existing = _check_recipe_ownership(recipe_id, user_id)
+    supabase.table("recipes").update({"cover_image_url": None}).eq("id", recipe_id).execute()
+    prev_path = _cover_path_from_url(existing.get("cover_image_url"))
+    if prev_path:
+        try:
+            supabase.storage.from_(_COVER_BUCKET).remove([prev_path])
+        except Exception:
+            logger.warning("Could not remove cover %s", prev_path, exc_info=True)
+    return assemble_recipe(recipe_id, user_id)
