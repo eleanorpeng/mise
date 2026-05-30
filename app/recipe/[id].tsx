@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.umber,
   },
-  content: { paddingBottom: 96 },
+  content: { paddingBottom: 128 },
 
   cookAlongBar: {
     position: 'absolute',

@@ -49,38 +49,8 @@ function uniqueMerge(a: string[] = [], b: string[] = []): string[] {
   return out;
 }
 
-function AssistantText({
-  text,
-  animate,
-  onTick,
-  onDone,
-}: {
-  text: string;
-  animate: boolean;
-  onTick?: () => void;
-  onDone?: () => void;
-}) {
-  const [shown, setShown] = useState(animate ? '' : text);
-  useEffect(() => {
-    if (!animate) {
-      setShown(text);
-      return;
-    }
-    const words = text.split(' ');
-    let i = 0;
-    const id = setInterval(() => {
-      i += 1;
-      setShown(words.slice(0, i).join(' '));
-      onTick?.();
-      if (i >= words.length) {
-        clearInterval(id);
-        onDone?.();
-      }
-    }, 26);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, animate]);
-  return <Text style={styles.assistantText}>{shown}</Text>;
+function AssistantText({ text }: { text: string }) {
+  return <Text style={styles.assistantText}>{text}</Text>;
 }
 
 function StopButton({ onPress }: { onPress: () => void }) {
@@ -276,47 +246,96 @@ export function ChefChat() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    try {
-      const res = await chefService.chat(apiMessages, profileContext, controller.signal);
-      const assistantId = nextId();
-      setStreamingId(assistantId);
-      setTurns((prev) => [
-        ...prev,
-        {
-          id: assistantId,
-          role: 'assistant',
-          content: res.reply,
-          recipe: res.recipe,
-          suggestions: res.suggestions,
-        },
-      ]);
+    let assistantId: string | null = null;
+    let accumulated = '';
 
-      if (res.learned) {
-        const cur = useProfileStore.getState().profile;
-        const dietary = uniqueMerge(
-          cur?.dietaryRestrictions,
-          res.learned.dietary_restrictions,
-        );
-        const cuisines = uniqueMerge(
-          cur?.cuisinePreferences,
-          res.learned.cuisine_preferences,
-        );
-        const changed =
-          dietary.length !== (cur?.dietaryRestrictions?.length ?? 0) ||
-          cuisines.length !== (cur?.cuisinePreferences?.length ?? 0);
-        if (changed) {
-          useProfileStore
-            .getState()
-            .update({ dietaryRestrictions: dietary, cuisinePreferences: cuisines })
-            .catch(() => {});
-        }
-      }
+    try {
+      await chefService.chatStream(apiMessages, profileContext, {
+        signal: controller.signal,
+        onDelta: (delta) => {
+          if (!delta) return;
+          accumulated += delta;
+          if (!assistantId) {
+            const newId = nextId();
+            assistantId = newId;
+            setPending(false);
+            setStreamingId(newId);
+            setTurns((prev) => [
+              ...prev,
+              { id: newId, role: 'assistant', content: accumulated },
+            ]);
+          } else {
+            const id = assistantId;
+            setTurns((prev) =>
+              prev.map((t) => (t.id === id ? { ...t, content: accumulated } : t)),
+            );
+          }
+          scrollToEnd();
+        },
+        onDone: (final) => {
+          if (controller.signal.aborted) return;
+          if (!assistantId) {
+            const newId = nextId();
+            assistantId = newId;
+            setTurns((prev) => [
+              ...prev,
+              {
+                id: newId,
+                role: 'assistant',
+                content: final.reply,
+                recipe: final.recipe,
+                suggestions: final.suggestions,
+              },
+            ]);
+          } else {
+            const id = assistantId;
+            setTurns((prev) =>
+              prev.map((t) =>
+                t.id === id
+                  ? {
+                      ...t,
+                      content: final.reply,
+                      recipe: final.recipe,
+                      suggestions: final.suggestions,
+                    }
+                  : t,
+              ),
+            );
+          }
+          setStreamingId(null);
+
+          if (final.learned) {
+            const cur = useProfileStore.getState().profile;
+            const dietary = uniqueMerge(
+              cur?.dietaryRestrictions,
+              final.learned.dietary_restrictions,
+            );
+            const cuisines = uniqueMerge(
+              cur?.cuisinePreferences,
+              final.learned.cuisine_preferences,
+            );
+            const changed =
+              dietary.length !== (cur?.dietaryRestrictions?.length ?? 0) ||
+              cuisines.length !== (cur?.cuisinePreferences?.length ?? 0);
+            if (changed) {
+              useProfileStore
+                .getState()
+                .update({
+                  dietaryRestrictions: dietary,
+                  cuisinePreferences: cuisines,
+                })
+                .catch(() => {});
+            }
+          }
+        },
+      });
     } catch (err: any) {
       if (err?.name === 'AbortError' || controller.signal.aborted) return;
       setError(err?.message || 'The chef is unavailable. Try again.');
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setPending(false);
+      setStreamingId((id) => (id === assistantId ? null : id));
       scrollToEnd();
     }
   };
@@ -425,12 +444,7 @@ export function ChefChat() {
               t.suggestions.length > 0;
             return (
               <View key={t.id} style={styles.assistantRow}>
-                <AssistantText
-                  text={t.content}
-                  animate={isStreaming}
-                  onTick={scrollToEnd}
-                  onDone={() => setStreamingId((id) => (id === t.id ? null : id))}
-                />
+                <AssistantText text={t.content} />
                 {t.recipe && !isStreaming ? (
                   <RecipePreview
                     recipe={t.recipe}
@@ -515,7 +529,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.lg,
   },
   newChatBtn: {
     flexDirection: 'row',

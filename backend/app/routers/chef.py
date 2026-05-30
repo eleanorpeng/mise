@@ -1,8 +1,10 @@
 import json
 import logging
+import re
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from openai import OpenAIError
 from pydantic import BaseModel, Field
 
@@ -187,6 +189,10 @@ async def chef_chat(
         raise HTTPException(status_code=502, detail="Chef is unavailable right now")
 
     raw = response.choices[0].message.content or "{}"
+    return _finalize_chef_payload(raw)
+
+
+def _finalize_chef_payload(raw: str) -> ChefChatResponse:
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
@@ -239,6 +245,151 @@ async def chef_chat(
         suggestions=suggestions,
         recipe=recipe,
         learned=learned,
+    )
+
+
+# --- Streaming endpoint ------------------------------------------------------
+#
+# We stream the JSON tokens from the LLM and incrementally peel the "reply"
+# field's contents off the front of the stream. The user sees the assistant's
+# message land word-by-word; the structured recipe / suggestions / learned
+# payload is delivered once at the end when the full JSON parses cleanly.
+
+_REPLY_START = re.compile(r'"reply"\s*:\s*"')
+
+_SIMPLE_ESCAPES = {
+    '"': '"', "\\": "\\", "/": "/",
+    "n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f",
+}
+
+
+def _decode_json_string(buf: str) -> tuple[int, str, bool]:
+    """Consume *buf* up to the unescaped closing quote of a JSON string.
+
+    Returns ``(chars_consumed, decoded_text, finished)``. When ``finished`` is
+    False, the buffer was exhausted mid-string — re-call after appending more.
+    """
+    out: list[str] = []
+    i = 0
+    n = len(buf)
+    while i < n:
+        c = buf[i]
+        if c == '"':
+            return i + 1, "".join(out), True
+        if c == "\\":
+            if i + 1 >= n:
+                return i, "".join(out), False
+            nxt = buf[i + 1]
+            if nxt in _SIMPLE_ESCAPES:
+                out.append(_SIMPLE_ESCAPES[nxt])
+                i += 2
+            elif nxt == "u":
+                if i + 6 > n:
+                    return i, "".join(out), False
+                code = buf[i + 2 : i + 6]
+                try:
+                    out.append(chr(int(code, 16)))
+                except ValueError:
+                    out.append("?")
+                i += 6
+            else:
+                out.append(nxt)
+                i += 2
+        else:
+            out.append(c)
+            i += 1
+    return i, "".join(out), False
+
+
+class _ReplyStreamer:
+    """Pull the unescaped contents of the JSON ``reply`` field out of a
+    growing token stream, ignoring everything else."""
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._state: Literal["scan", "in_string", "done"] = "scan"
+
+    def feed(self, chunk: str) -> str:
+        if self._state == "done":
+            return ""
+        self._buffer += chunk
+        out: list[str] = []
+        while True:
+            if self._state == "scan":
+                m = _REPLY_START.search(self._buffer)
+                if m is None:
+                    return "".join(out)
+                self._buffer = self._buffer[m.end():]
+                self._state = "in_string"
+            elif self._state == "in_string":
+                consumed, decoded, finished = _decode_json_string(self._buffer)
+                self._buffer = self._buffer[consumed:]
+                if decoded:
+                    out.append(decoded)
+                if finished:
+                    self._state = "done"
+                return "".join(out)
+            else:
+                return "".join(out)
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@router.post("/chat/stream")
+@limiter.limit("30/minute")
+async def chef_chat_stream(
+    request: Request,
+    body: ChefChatRequest,
+    user_id: str = Depends(get_current_user),
+):
+    client = chat_client()
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": _profile_context(body.profile)},
+    ]
+    messages.extend({"role": m.role, "content": m.content} for m in body.messages)
+
+    async def gen():
+        collected: list[str] = []
+        extractor = _ReplyStreamer()
+        try:
+            stream = await client.chat.completions.create(
+                model=settings.chat_model,
+                response_format={"type": "json_object"},
+                messages=messages,
+                temperature=0.5,
+                max_tokens=2048,
+                stream=True,
+            )
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                content = delta.content if delta else None
+                if not content:
+                    continue
+                collected.append(content)
+                new_text = extractor.feed(content)
+                if new_text:
+                    yield _sse("delta", {"text": new_text})
+        except OpenAIError as exc:
+            logger.warning("Chef stream failed: %s", exc)
+            yield _sse("error", {"message": "Chef is unavailable right now"})
+            return
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Chef stream crashed: %s", exc)
+            yield _sse("error", {"message": "Chef ran into a problem"})
+            return
+
+        final = _finalize_chef_payload("".join(collected))
+        yield _sse("done", json.loads(final.model_dump_json()))
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
