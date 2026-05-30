@@ -28,13 +28,10 @@ The whole app runs in **Expo Go** — there are no custom native modules, so no 
    ```bash
    npm install --legacy-peer-deps
    ```
-2. Copy `.env.example` to `.env` at the repo root and fill in the hosted backend values:
+2. Copy the prefilled env file (already points at the hosted backend — no edits needed):
+   ```bash
+   cp .env.example .env
    ```
-   EXPO_PUBLIC_API_URL=https://<deployment>.ondigitalocean.app
-   EXPO_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
-   EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon-or-publishable-key>
-   ```
-   (No trailing slash on the API URL.)
 3. Start Expo:
    ```bash
    npx expo start -c
@@ -42,7 +39,7 @@ The whole app runs in **Expo Go** — there are no custom native modules, so no 
    The `-c` matters — `EXPO_PUBLIC_*` values are baked in at bundler start, so `.env` changes only take effect on a fresh start, not hot reload.
 4. Scan the QR with **Expo Go** (or press `i` for iOS sim, `a` for Android emulator).
 
-That's it. To verify the backend is reachable, open `https://<deployment>.ondigitalocean.app/health` in a browser — it should return `{"status":"ok"}`.
+That's it. To verify the backend is reachable, open `https://mise-eni44.ondigitalocean.app/health` in a browser — it should return `{"status":"ok"}`.
 
 ---
 
