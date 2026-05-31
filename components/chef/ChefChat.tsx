@@ -226,18 +226,12 @@ export function ChefChat() {
 
   const isResponding = pending || streamingId !== null;
 
-  // Hydrate on mount and lift the active conversation's turns into local state.
-  // After this, local `turns` is the source of truth and we persist it back
-  // through saveTurnsToHistory at meaningful points (after send, after done).
+  // Hydrate the conversation list on mount. The active conversation (if any)
+  // gets its messages loaded lazily — only when the user reopens an old chat
+  // via the history sheet, so we don't pay for a turns fetch every app launch.
   useEffect(() => {
     if (historyHydrated) return;
-    hydrateHistory().then(() => {
-      const { currentId, conversations } = useChefHistoryStore.getState();
-      if (currentId) {
-        const convo = conversations.find((c) => c.id === currentId);
-        if (convo) setTurns(convo.turns);
-      }
-    });
+    hydrateHistory();
   }, [historyHydrated, hydrateHistory]);
 
   const scrollToEnd = () => {
@@ -247,7 +241,10 @@ export function ChefChat() {
   const send = async (text: string, priorTurns: Turn[]) => {
     setError(null);
     if (!useChefHistoryStore.getState().currentId) {
-      startNewConvo();
+      // Wait for the server-issued id so the immediate saveTurns below has
+      // somewhere to land. If creation fails (offline / outage), continue
+      // anyway — saveTurns will quietly no-op and the user can still chat.
+      await startNewConvo();
     }
     const userTurn: Turn = { id: nextId(), role: 'user', content: text };
     const withUser = [...priorTurns, userTurn];
@@ -382,25 +379,27 @@ export function ChefChat() {
     setSavedId(null);
   };
 
-  const handleOpenConversation = (id: string) => {
+  const handleOpenConversation = async (id: string) => {
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
-    const convo = useChefHistoryStore
-      .getState()
-      .conversations.find((c) => c.id === id);
-    if (!convo) return;
     setCurrentConvo(id);
-    setTurns(convo.turns);
     setDraft('');
     setError(null);
     setStreamingId(null);
-    setPending(false);
+    setPending(true);
     setSavingId(null);
     setSavedId(null);
     setHistoryOpen(false);
-    scrollToEnd();
+    const loaded = await useChefHistoryStore.getState().loadTurns(id);
+    setPending(false);
+    if (loaded) {
+      setTurns(loaded);
+      scrollToEnd();
+    } else {
+      setError('Could not load that chat.');
+    }
   };
 
   const handleSave = async (turn: Turn) => {

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import get_current_user
 from app.config import settings
+from app.database import maybe_single, supabase
 from app.llm import chat_client
 from app.rate_limit import limiter
 from app.routers.import_ import _persist_recipe
@@ -408,3 +409,177 @@ async def chef_save(
         logger.exception("Failed to save chef recipe")
         raise HTTPException(status_code=500, detail="Could not save recipe")
     return full_recipe
+
+
+# --- Conversation persistence ------------------------------------------------
+#
+# Conversation/message rows live in Supabase. The frontend stores the in-memory
+# turn array as the source of truth during a session and PUTs the full array
+# back to /conversations/{id}/messages on each turn boundary. The backend
+# treats that PUT as a full replace and re-derives the title from the first
+# user message — keeps the API trivially idempotent.
+
+_TITLE_MAX = 60
+
+
+class ChefTurnPayload(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+    recipe: RecipeExtraction | None = None
+    suggestions: list[str] = []
+
+
+class ReplaceMessagesRequest(BaseModel):
+    turns: list[ChefTurnPayload] = Field(..., max_length=200)
+
+
+def _derive_title(turns: list[ChefTurnPayload]) -> str:
+    for t in turns:
+        if t.role == "user":
+            stripped = " ".join(t.content.split())
+            if stripped:
+                if len(stripped) > _TITLE_MAX:
+                    return stripped[: _TITLE_MAX - 1].rstrip() + "…"
+                return stripped
+    return "New chat"
+
+
+def _convo_owner_or_404(convo_id: str, user_id: str) -> dict:
+    row = maybe_single(
+        supabase.table("chef_conversations")
+        .select("id, user_id, title, created_at, updated_at")
+        .eq("id", convo_id)
+        .eq("user_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    if not row:
+        raise HTTPException(404, "Conversation not found")
+    return row
+
+
+def _summarize(convo: dict, last_assistant_snippet: str | None) -> dict:
+    return {
+        "id": convo["id"],
+        "title": convo.get("title") or "New chat",
+        "createdAt": convo.get("created_at"),
+        "updatedAt": convo.get("updated_at"),
+        "snippet": last_assistant_snippet or "",
+    }
+
+
+@router.get("/conversations")
+async def list_conversations(user_id: str = Depends(get_current_user)):
+    res = (
+        supabase.table("chef_conversations")
+        .select("id, title, created_at, updated_at")
+        .eq("user_id", user_id)
+        .order("updated_at", desc=True)
+        .limit(50)
+        .execute()
+    )
+    convos = res.data or []
+    if not convos:
+        return []
+
+    # Pull the latest assistant snippet for each conversation in one round trip.
+    ids = [c["id"] for c in convos]
+    msgs_res = (
+        supabase.table("chef_messages")
+        .select("conversation_id, role, content, ordinal")
+        .in_("conversation_id", ids)
+        .eq("role", "assistant")
+        .order("ordinal", desc=True)
+        .execute()
+    )
+    latest_by_convo: dict[str, str] = {}
+    for m in msgs_res.data or []:
+        cid = m["conversation_id"]
+        if cid not in latest_by_convo and m.get("content"):
+            latest_by_convo[cid] = m["content"]
+
+    return [_summarize(c, latest_by_convo.get(c["id"])) for c in convos]
+
+
+@router.post("/conversations", status_code=201)
+async def create_conversation(user_id: str = Depends(get_current_user)):
+    res = (
+        supabase.table("chef_conversations")
+        .insert({"user_id": user_id, "title": "New chat"})
+        .execute()
+    )
+    convo = res.data[0]
+    return _summarize(convo, None)
+
+
+@router.get("/conversations/{convo_id}")
+async def get_conversation(convo_id: str, user_id: str = Depends(get_current_user)):
+    convo = _convo_owner_or_404(convo_id, user_id)
+    msgs_res = (
+        supabase.table("chef_messages")
+        .select("ordinal, role, content, recipe_json, suggestions")
+        .eq("conversation_id", convo_id)
+        .order("ordinal")
+        .execute()
+    )
+    turns = [
+        {
+            "role": m["role"],
+            "content": m["content"],
+            "recipe": m.get("recipe_json"),
+            "suggestions": m.get("suggestions") or [],
+        }
+        for m in (msgs_res.data or [])
+    ]
+    return {
+        **_summarize(convo, None),
+        "turns": turns,
+    }
+
+
+@router.put("/conversations/{convo_id}/messages")
+async def replace_messages(
+    convo_id: str,
+    body: ReplaceMessagesRequest,
+    user_id: str = Depends(get_current_user),
+):
+    _convo_owner_or_404(convo_id, user_id)
+
+    supabase.table("chef_messages").delete().eq("conversation_id", convo_id).execute()
+
+    if body.turns:
+        rows = [
+            {
+                "conversation_id": convo_id,
+                "ordinal": i,
+                "role": t.role,
+                "content": t.content,
+                "recipe_json": t.recipe.model_dump() if t.recipe else None,
+                "suggestions": t.suggestions or [],
+            }
+            for i, t in enumerate(body.turns)
+        ]
+        supabase.table("chef_messages").insert(rows).execute()
+
+    title = _derive_title(body.turns)
+    update_res = (
+        supabase.table("chef_conversations")
+        .update({"title": title, "updated_at": "now()"})
+        .eq("id", convo_id)
+        .execute()
+    )
+    convo = update_res.data[0] if update_res.data else None
+    last_assistant = next(
+        (t.content for t in reversed(body.turns) if t.role == "assistant" and t.content),
+        None,
+    )
+    return _summarize(
+        convo or {"id": convo_id, "title": title, "updated_at": None, "created_at": None},
+        last_assistant,
+    )
+
+
+@router.delete("/conversations/{convo_id}", status_code=204)
+async def delete_conversation(convo_id: str, user_id: str = Depends(get_current_user)):
+    _convo_owner_or_404(convo_id, user_id)
+    supabase.table("chef_conversations").delete().eq("id", convo_id).execute()

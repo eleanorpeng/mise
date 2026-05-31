@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, spacing, radius } from '@/constants';
-import { useChefHistoryStore, type ChefConversation } from '@/store/chefHistory';
+import { useChefHistoryStore, type ChefConversationSummary } from '@/store/chefHistory';
 
 interface Props {
   visible: boolean;
@@ -21,7 +21,10 @@ interface Props {
   onOpenConversation: (id: string) => void;
 }
 
-function relativeTime(ts: number): string {
+function relativeTime(iso: string | null): string {
+  if (!iso) return '';
+  const ts = Date.parse(iso);
+  if (Number.isNaN(ts)) return '';
   const diff = Date.now() - ts;
   if (diff < 60_000) return 'Just now';
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
@@ -30,12 +33,9 @@ function relativeTime(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function lastAssistantSnippet(convo: ChefConversation): string {
-  for (let i = convo.turns.length - 1; i >= 0; i -= 1) {
-    const t = convo.turns[i];
-    if (t.role === 'assistant' && t.content.trim()) {
-      return t.content.replace(/\s+/g, ' ').slice(0, 90);
-    }
+function snippet(convo: ChefConversationSummary): string {
+  if (convo.snippet?.trim()) {
+    return convo.snippet.replace(/\s+/g, ' ').slice(0, 90);
   }
   return 'No messages yet';
 }
@@ -47,11 +47,16 @@ export function ChefHistorySheet({ visible, onClose, onOpenConversation }: Props
   const remove = useChefHistoryStore((s) => s.remove);
 
   const ordered = useMemo(
-    () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
+    () =>
+      [...conversations].sort((a, b) => {
+        const ax = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+        const bx = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+        return bx - ax;
+      }),
     [conversations],
   );
 
-  const confirmDelete = (convo: ChefConversation) => {
+  const confirmDelete = (convo: ChefConversationSummary) => {
     Alert.alert(
       'Delete chat?',
       convo.title,
@@ -108,7 +113,7 @@ export function ChefHistorySheet({ visible, onClose, onOpenConversation }: Props
                       {item.title}
                     </Text>
                     <Text style={styles.rowSnippet} numberOfLines={2}>
-                      {lastAssistantSnippet(item)}
+                      {snippet(item)}
                     </Text>
                   </View>
                   <Text style={styles.rowTime}>{relativeTime(item.updatedAt)}</Text>

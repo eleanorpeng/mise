@@ -87,6 +87,7 @@ In Supabase Dashboard → SQL Editor, run each migration in order:
 2. `backend/supabase_migration_collections.sql`
 3. `backend/supabase_migration_cook_log.sql`
 4. `backend/supabase_migration_profiles.sql` (onboarding + the chef's preference memory)
+5. `backend/supabase_migration_chef_history.sql` (chef chat conversations + messages)
 
 Then open Supabase **API Docs** once — that forces PostgREST to refresh its schema cache.
 

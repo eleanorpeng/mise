@@ -53,6 +53,8 @@ export const api = {
   get: <T>(path: string, opts?: RequestOpts) => request<T>(path, { signal: opts?.signal }),
   post: <T>(path: string, body: unknown, opts?: RequestOpts) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal }),
+  put: <T>(path: string, body: unknown, opts?: RequestOpts) =>
+    request<T>(path, { method: 'PUT', body: JSON.stringify(body), signal: opts?.signal }),
   patch: <T>(path: string, body: unknown, opts?: RequestOpts) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body), signal: opts?.signal }),
   delete: <T>(path: string, opts?: RequestOpts) =>

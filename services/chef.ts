@@ -138,6 +138,25 @@ async function chatStream(
   }
 }
 
+export interface ChefTurnPayload {
+  role: 'user' | 'assistant';
+  content: string;
+  recipe?: RecipeExtraction | null;
+  suggestions?: string[];
+}
+
+export interface ChefConversationSummary {
+  id: string;
+  title: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+  snippet: string;
+}
+
+export interface ChefConversationDetail extends ChefConversationSummary {
+  turns: ChefTurnPayload[];
+}
+
 export const chefService = {
   chat: (messages: ChatMessage[], profile?: ProfileContext, signal?: AbortSignal) =>
     api.post<ChefChatResponse>('/chef/chat', { messages, profile }, { signal }),
@@ -145,4 +164,19 @@ export const chefService = {
   chatStream,
 
   save: (recipe: RecipeExtraction) => api.post<Recipe>('/chef/save', recipe),
+
+  listConversations: () =>
+    api.get<ChefConversationSummary[]>('/chef/conversations'),
+
+  getConversation: (id: string) =>
+    api.get<ChefConversationDetail>(`/chef/conversations/${id}`),
+
+  createConversation: () =>
+    api.post<ChefConversationSummary>('/chef/conversations', {}),
+
+  replaceMessages: (id: string, turns: ChefTurnPayload[]) =>
+    api.put<ChefConversationSummary>(`/chef/conversations/${id}/messages`, { turns }),
+
+  deleteConversation: (id: string) =>
+    api.delete<void>(`/chef/conversations/${id}`),
 };
