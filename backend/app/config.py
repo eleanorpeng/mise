@@ -32,9 +32,11 @@ class Settings(BaseSettings):
     # via OpenRouter when OPENROUTER_API_KEY is set; otherwise OpenAI TTS.
     voxtral_tts_model: str = "mistralai/voxtral-mini-tts-2603"
 
-    # Speech-to-text (video import + voice cook-along). Routes to Mistral
-    # Voxtral Mini Transcribe via OpenRouter when set; otherwise OpenAI Whisper.
-    transcribe_model: str = "mistralai/voxtral-mini-transcribe"
+    # Speech-to-text (video import + voice cook-along). When OpenRouter is set,
+    # audio is sent to this audio-capable chat model via chat completions
+    # (OpenRouter has no Whisper file endpoint); otherwise OpenAI Whisper.
+    # gemini-2.5-flash returns clean transcripts and is already used for vision.
+    transcribe_model: str = "google/gemini-2.5-flash"
 
     # extra="ignore" so unrelated keys in .env / the shell environment (e.g. a
     # stray ELEVENLABS_API_KEY) don't crash settings load — and thus startup.

@@ -59,9 +59,17 @@ def technique_model() -> str:
     return vision_model(fast=False)
 
 
+def transcribe_via_openrouter() -> bool:
+    """Whether transcription routes through OpenRouter (so it spends the
+    OpenRouter credits). When True, audio is sent as a base64 chat-completions
+    input — OpenRouter has no Whisper-style file-upload endpoint and rejects
+    multipart uploads with 400 "invalid content-type: multipart/form-data"."""
+    return bool(settings.openrouter_api_key)
+
+
 def transcribe_client() -> AsyncOpenAI:
-    """Client for speech-to-text. Routes to OpenRouter (Voxtral Mini
-    Transcribe) when configured, otherwise OpenAI Whisper."""
+    """Client for speech-to-text. OpenRouter (audio via chat completions) when
+    configured, otherwise OpenAI Whisper (multipart file upload)."""
     if settings.openrouter_api_key:
         return AsyncOpenAI(
             api_key=settings.openrouter_api_key,
@@ -71,7 +79,8 @@ def transcribe_client() -> AsyncOpenAI:
 
 
 def transcribe_model() -> str:
-    """Model slug for transcription — provider-specific."""
+    """Transcription model slug. An OpenRouter audio-capable chat model when
+    OpenRouter is configured (see settings.transcribe_model), else Whisper."""
     if settings.openrouter_api_key:
         return settings.transcribe_model
     return "whisper-1"
