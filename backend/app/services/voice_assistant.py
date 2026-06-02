@@ -4,14 +4,15 @@ import base64
 import json
 import logging
 import re
-from io import BytesIO
+from pathlib import Path
 from typing import Literal
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from app.config import settings
-from app.llm import chat_client, transcribe_client, transcribe_model
+from app.llm import chat_client
+from app.services.transcription import transcribe_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -344,14 +345,10 @@ def match_keyword_intent(
 
 
 async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.m4a") -> str:
-    client = transcribe_client()
-    f = BytesIO(audio_bytes)
-    f.name = filename
-    result = await client.audio.transcriptions.create(
-        model=transcribe_model(), file=f
-    )
-    text = result if isinstance(result, str) else result.text
-    return (text or "").strip()
+    # Delegates to the shared transcription path (OpenRouter chat-audio, with
+    # mp3 transcode for the m4a the client records, or Whisper fallback).
+    ext = Path(filename).suffix.lstrip(".") or "m4a"
+    return await transcribe_bytes(audio_bytes, ext)
 
 
 async def process_voice_turn(
