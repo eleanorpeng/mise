@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { colors, fonts, typeScale, spacing, radius } from '@/constants';
 import { useCollectionsStore, type Collection } from '@/store/collections';
 import { useRecipesStore } from '@/store/recipes';
+import type { Recipe } from '@/types';
 import { RecipeCard } from '@/components/recipe/RecipeCard';
 import { BottomFade } from '@/components/ui/BottomFade';
 import { ChefChat } from '@/components/chef/ChefChat';
@@ -75,6 +76,7 @@ export default function RecipesScreen() {
   const removeCollection = useCollectionsStore((s) => s.remove);
   const recipes = useRecipesStore((s) => s.recipes);
   const fetchRecipes = useRecipesStore((s) => s.fetch);
+  const deleteRecipe = useRecipesStore((s) => s.delete);
   const router = useRouter();
 
   const handleDeleteCollection = (collection: Collection) => {
@@ -95,6 +97,25 @@ export default function RecipesScreen() {
         },
       },
     ]);
+  };
+
+  const handleDeleteRecipe = (recipe: Recipe) => {
+    Alert.alert(
+      `Delete “${recipe.title}”?`,
+      'This permanently removes the recipe. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteRecipe(recipe.id).catch(() => {
+              Alert.alert('Could not delete recipe', 'Please try again.');
+            });
+          },
+        },
+      ],
+    );
   };
 
   useEffect(() => {
@@ -239,9 +260,20 @@ export default function RecipesScreen() {
             contentContainerStyle={styles.hList}
           >
             {recipes.map((r) => (
-              <RecipeCard key={r.id} recipe={r} width={180} />
+              <RecipeCard
+                key={r.id}
+                recipe={r}
+                width={180}
+                onLongPress={() => handleDeleteRecipe(r)}
+              />
             ))}
           </ScrollView>
+        )}
+
+        {recipes.length > 0 && (
+          <Text style={styles.cookbookHint}>
+            Long-press a recipe to delete it.
+          </Text>
         )}
       </ScrollView>
       <BottomFade />

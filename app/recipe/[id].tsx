@@ -98,6 +98,7 @@ export default function RecipeDetailScreen() {
   );
 
   const replaceInStore = useRecipesStore((s) => s.replace);
+  const deleteRecipe = useRecipesStore((s) => s.delete);
   const [coverBusy, setCoverBusy] = useState(false);
 
   const collections = useCollectionsStore((s) => s.collections);
@@ -174,6 +175,28 @@ export default function RecipeDetailScreen() {
     } finally {
       setCoverBusy(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (!recipe) return;
+    Alert.alert(
+      `Delete “${recipe.title}”?`,
+      'This permanently removes the recipe. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteRecipe(recipe.id)
+              .then(() => router.back())
+              .catch(() =>
+                Alert.alert('Could not delete recipe', 'Please try again.'),
+              );
+          },
+        },
+      ],
+    );
   };
 
   const handleEditCover = () => {
@@ -333,6 +356,19 @@ export default function RecipeDetailScreen() {
                     ? 'bookmark'
                     : 'bookmark-outline'
                 }
+                size={18}
+                color={colors.espresso}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleDelete}
+              style={styles.iconBtn}
+              hitSlop={12}
+              accessibilityLabel="Delete recipe"
+              accessibilityRole="button"
+            >
+              <MaterialCommunityIcons
+                name="trash-can-outline"
                 size={18}
                 color={colors.espresso}
               />
