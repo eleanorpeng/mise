@@ -48,12 +48,12 @@ into structured recipes. Respond with a single JSON object matching this schema 
     }
   ],
   "macros": {
-    "calories": "number",
+    "calories": "number — per serving",
     "protein_g": "number",
     "carbs_g": "number",
     "fat_g": "number",
     "fiber_g": "number or null"
-  } or null
+  }
 }
 
 Rules:
@@ -61,7 +61,8 @@ Rules:
 - Ingredient quantities must be numeric (float) or null. Put prep notes in the "notes" field.
 - If the video is not a cooking recipe, still do your best to extract a recipe \
 from whatever food content is shown.
-- Macros are optional — include a rough per-serving estimate if you can infer the dish.
+- Always include "macros" with a reasonable per-serving estimate inferred from the \
+ingredients and portions. Never omit it — approximate if unsure.
 - Do NOT include technique explanations — only the actionable step instructions.
 - Output ONLY the JSON object, no markdown fences or commentary.\
 """
