@@ -271,7 +271,7 @@ export default function RecipesScreen() {
         )}
 
         {recipes.length > 0 && (
-          <Text style={styles.cookbookHint}>
+          <Text style={[styles.cookbookHint, styles.recipeHint]}>
             Long-press a recipe to delete it.
           </Text>
         )}
@@ -434,6 +434,11 @@ const styles = StyleSheet.create({
     marginTop: -spacing.md,
     marginBottom: spacing.xl2,
     paddingHorizontal: spacing.xl,
+  },
+  // The recipe list sits directly above its hint, so give it breathing room
+  // instead of the cookbook hint's negative top margin.
+  recipeHint: {
+    marginTop: spacing.lg,
   },
 
   // Outer wrapper gives extra vertical room for peeking pages
