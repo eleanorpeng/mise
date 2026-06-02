@@ -9,9 +9,10 @@ interface RecipesStore {
   add: (recipe: Recipe) => void;
   replace: (recipe: Recipe) => void;
   remove: (id: string) => void;
+  delete: (id: string) => Promise<void>;
 }
 
-export const useRecipesStore = create<RecipesStore>((set) => ({
+export const useRecipesStore = create<RecipesStore>((set, get) => ({
   recipes: [],
   loading: false,
   fetch: async () => {
@@ -31,4 +32,15 @@ export const useRecipesStore = create<RecipesStore>((set) => ({
       recipes: s.recipes.map((r) => (r.id === recipe.id ? recipe : r)),
     })),
   remove: (id) => set((s) => ({ recipes: s.recipes.filter((r) => r.id !== id) })),
+  delete: async (id) => {
+    // Optimistically remove, restore on failure so the UI stays truthful.
+    const previous = get().recipes;
+    set({ recipes: previous.filter((r) => r.id !== id) });
+    try {
+      await recipesService.delete(id);
+    } catch (err) {
+      set({ recipes: previous });
+      throw err;
+    }
+  },
 }));

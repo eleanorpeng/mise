@@ -26,25 +26,31 @@ _TRANSCRIBE_INSTRUCTION = (
 )
 
 
-def _ffmpeg_to_mp3(audio_bytes: bytes, src_ext: str) -> bytes:
-    """Transcode arbitrary audio bytes to mono 16 kHz mp3 via ffmpeg.
+def _ffmpeg_to_wav(audio_bytes: bytes, src_ext: str) -> bytes:
+    """Transcode arbitrary audio bytes to mono 16 kHz 16-bit WAV via ffmpeg.
 
-    Uses temp files rather than stdin pipes because m4a/mp4 (mov containers)
-    aren't reliably readable from a non-seekable pipe.
+    WAV/PCM is chosen over mp3 because PCM encoding is built into every ffmpeg
+    build (no libmp3lame dependency — some server builds lack it, which fails
+    the mp3 muxer). Uses temp files rather than stdin pipes because m4a/mp4 (mov
+    containers) aren't reliably readable from a non-seekable pipe.
     """
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / f"in.{src_ext or 'bin'}"
-        dst = Path(td) / "out.mp3"
+        dst = Path(td) / "out.wav"
         src.write_bytes(audio_bytes)
         proc = subprocess.run(
-            ["ffmpeg", "-i", str(src), "-ac", "1", "-ar", "16000", str(dst), "-y"],
+            [
+                "ffmpeg", "-i", str(src),
+                "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+                str(dst), "-y",
+            ],
             capture_output=True,
             timeout=120,
         )
         if proc.returncode != 0 or not dst.exists():
             raise RuntimeError(
                 f"ffmpeg audio conversion failed (rc={proc.returncode}): "
-                f"{proc.stderr.decode(errors='replace')[:300]}"
+                f"{proc.stderr.decode(errors='replace')[-400:]}"
             )
         return dst.read_bytes()
 
@@ -71,8 +77,8 @@ async def transcribe_bytes(audio_bytes: bytes, fmt: str = "mp3") -> str:
 
     if transcribe_via_openrouter():
         if fmt not in _OPENROUTER_AUDIO_FORMATS:
-            audio_bytes = _ffmpeg_to_mp3(audio_bytes, fmt)
-            fmt = "mp3"
+            audio_bytes = _ffmpeg_to_wav(audio_bytes, fmt)
+            fmt = "wav"
         b64 = base64.b64encode(audio_bytes).decode()
         response = await client.chat.completions.create(
             model=model,

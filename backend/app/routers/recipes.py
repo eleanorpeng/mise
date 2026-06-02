@@ -166,6 +166,9 @@ async def create_recipe(data: dict, user_id: str = Depends(get_current_user)):
 
 @router.delete("/{recipe_id}", status_code=204)
 async def delete_recipe(recipe_id: str, user_id: str = Depends(get_current_user)):
+    # Child rows are removed by the DB via ON DELETE CASCADE (see
+    # supabase_migration_recipe_cascade.sql); cook_logs/import_jobs are set-null.
+    # The user_id filter scopes deletion to the owner.
     supabase.table("recipes").delete().eq("id", recipe_id).eq("user_id", user_id).execute()
 
 
