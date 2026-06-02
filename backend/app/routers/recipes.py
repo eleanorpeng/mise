@@ -166,24 +166,9 @@ async def create_recipe(data: dict, user_id: str = Depends(get_current_user)):
 
 @router.delete("/{recipe_id}", status_code=204)
 async def delete_recipe(recipe_id: str, user_id: str = Depends(get_current_user)):
-    # Verify ownership before touching anything (idempotent no-op otherwise).
-    owned = (
-        supabase.table("recipes")
-        .select("id")
-        .eq("id", recipe_id)
-        .eq("user_id", user_id)
-        .execute()
-    )
-    if not owned.data:
-        return
-
-    # Remove child rows that reference the recipe. These FKs are not
-    # ON DELETE CASCADE in the DB, so deleting the recipe directly fails with a
-    # foreign-key violation. (recipe_collections cascades and cook_logs is
-    # set-null at the DB level, so they're handled automatically.)
-    for table in ("planned_meals", "macros", "steps", "ingredients"):
-        supabase.table(table).delete().eq("recipe_id", recipe_id).execute()
-
+    # Child rows are removed by the DB via ON DELETE CASCADE (see
+    # supabase_migration_recipe_cascade.sql); cook_logs/import_jobs are set-null.
+    # The user_id filter scopes deletion to the owner.
     supabase.table("recipes").delete().eq("id", recipe_id).eq("user_id", user_id).execute()
 
 
