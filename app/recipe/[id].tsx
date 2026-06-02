@@ -775,11 +775,6 @@ function StepBlock({
     <View style={styles.step}>
       <View style={styles.stepHeader}>
         <Text style={styles.stepNumber}>{String(index).padStart(2, '0')}</Text>
-        {step.durationSeconds && (
-          <Text style={styles.stepDuration}>
-            {Math.round(step.durationSeconds / 60)} min
-          </Text>
-        )}
       </View>
       <Text style={styles.stepInstruction}>{step.instruction}</Text>
       {step.technique && (

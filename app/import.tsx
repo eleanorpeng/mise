@@ -2,6 +2,7 @@ import {
   View,
   Text,
   StyleSheet,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
@@ -44,6 +45,7 @@ function GeneratingOverlay({ mode }: { mode: Mode }) {
   const [dots, setDots] = useState('');
 
   useEffect(() => {
+    Keyboard.dismiss();
     const advance = setInterval(
       () => setStep((p) => Math.min(p + 1, stages.length - 1)),
       2600,

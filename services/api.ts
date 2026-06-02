@@ -60,7 +60,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(text || `HTTP ${res.status}`);
   }
-  return res.json() as Promise<T>;
+
+  // 204 No Content (e.g. DELETE) and other empty bodies have no JSON to parse.
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 interface RequestOpts {
