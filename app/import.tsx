@@ -11,7 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -22,6 +22,55 @@ import { importService } from '@/services/import';
 import { useRecipesStore } from '@/store/recipes';
 
 type Mode = 'choose' | 'url' | 'photo';
+
+const URL_STAGES = [
+  'Downloading the video',
+  'Listening to the steps',
+  'Reading the ingredients',
+  'Writing up your recipe',
+];
+const PHOTO_STAGES = [
+  'Looking at your dish',
+  'Identifying the ingredients',
+  'Writing up your recipe',
+];
+
+// Indicative staged progress while the import request is in flight. The stages
+// advance on a timer (the request itself is a single call), giving a sense of
+// what's happening — download → transcribe → synthesize.
+function GeneratingOverlay({ mode }: { mode: Mode }) {
+  const stages = mode === 'photo' ? PHOTO_STAGES : URL_STAGES;
+  const [step, setStep] = useState(0);
+  const [dots, setDots] = useState('');
+
+  useEffect(() => {
+    const advance = setInterval(
+      () => setStep((p) => Math.min(p + 1, stages.length - 1)),
+      2600,
+    );
+    const pulse = setInterval(
+      () => setDots((p) => (p.length >= 3 ? '' : p + '.')),
+      450,
+    );
+    return () => {
+      clearInterval(advance);
+      clearInterval(pulse);
+    };
+  }, [stages.length]);
+
+  return (
+    <View style={styles.fullLoader} pointerEvents="auto">
+      <View style={styles.fullLoaderCard}>
+        <ActivityIndicator color={colors.terra} size="large" />
+        <Text style={styles.fullLoaderTitle}>Cooking up your recipe</Text>
+        <Text style={styles.fullLoaderSub}>
+          {stages[step]}
+          {dots}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 export default function ImportScreen() {
   const params = useLocalSearchParams<{ mode?: string }>();
@@ -311,17 +360,7 @@ export default function ImportScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {loading && mode === 'photo' && (
-        <View style={styles.fullLoader} pointerEvents="auto">
-          <View style={styles.fullLoaderCard}>
-            <ActivityIndicator color={colors.terra} size="large" />
-            <Text style={styles.fullLoaderTitle}>Reading the dish…</Text>
-            <Text style={styles.fullLoaderSub}>
-              Identifying ingredients and steps.
-            </Text>
-          </View>
-        </View>
-      )}
+      {loading && <GeneratingOverlay mode={mode} />}
     </SafeAreaView>
   );
 }
