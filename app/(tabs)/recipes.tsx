@@ -8,6 +8,7 @@ import { useRecipesStore } from '@/store/recipes';
 import { RecipeCard } from '@/components/recipe/RecipeCard';
 import { BottomFade } from '@/components/ui/BottomFade';
 import { ChefChat } from '@/components/chef/ChefChat';
+import { CreateRecipeSheet } from '@/components/recipe/CreateRecipeSheet';
 
 type RecipeMode = 'cookbooks' | 'chef';
 
@@ -105,6 +106,7 @@ export default function RecipesScreen() {
   const [name, setName] = useState('');
   const [paletteIdx, setPaletteIdx] = useState(0);
   const [mode, setMode] = useState<RecipeMode>('cookbooks');
+  const [createOpen, setCreateOpen] = useState(false);
 
   const sheetHeight = Dimensions.get('window').height;
   const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -186,8 +188,8 @@ export default function RecipesScreen() {
             <Text style={styles.title}>My cookbooks</Text>
             <Text style={styles.sub}>{collections.length} collections</Text>
           </View>
-          <TouchableOpacity style={styles.newBtn} activeOpacity={0.85} onPress={() => setCreating(true)}>
-            <Text style={styles.newBtnText}>+ New</Text>
+          <TouchableOpacity style={styles.newCookbookBtn} activeOpacity={0.85} onPress={() => setCreating(true)}>
+            <Text style={styles.newCookbookBtnText}>+ New</Text>
           </TouchableOpacity>
         </View>
 
@@ -212,11 +214,16 @@ export default function RecipesScreen() {
           </Text>
         )}
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>All recipes</Text>
-          <Text style={styles.sectionSub}>
-            {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'}
-          </Text>
+        <View style={styles.sectionHeaderRow}>
+          <View>
+            <Text style={styles.sectionTitle}>All recipes</Text>
+            <Text style={styles.sectionSub}>
+              {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'}
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.newBtn} activeOpacity={0.85} onPress={() => setCreateOpen(true)}>
+            <Text style={styles.newBtnText}>+ New</Text>
+          </TouchableOpacity>
         </View>
 
         {recipes.length === 0 ? (
@@ -240,6 +247,8 @@ export default function RecipesScreen() {
       <BottomFade />
       </>
       )}
+
+      <CreateRecipeSheet visible={createOpen} onClose={() => setCreateOpen(false)} />
 
       <Modal
         visible={creating}
@@ -465,11 +474,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 
-  sectionHeader: {
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
     marginTop: spacing.md,
     marginBottom: spacing.lg,
-    gap: 2,
   },
   sectionTitle: {
     ...typeScale.h2,
@@ -479,6 +490,21 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodyRegular,
     fontSize: 13,
     color: colors.umber,
+    marginTop: 2,
+  },
+  newCookbookBtn: {
+    backgroundColor: colors.cardBg,
+    borderRadius: radius.pill,
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: colors.borderResting,
+  },
+  newCookbookBtnText: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
+    color: colors.espresso,
   },
   hList: {
     paddingHorizontal: spacing.xl,

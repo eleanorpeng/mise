@@ -12,6 +12,8 @@ import { RecentlySaved } from '@/components/home/RecentlySaved';
 import { CookLogPeek } from '@/components/home/CookLogPeek';
 import { useGreeting } from '@/hooks/useGreeting';
 import { usePlanStore, getMondayIso } from '@/store/plan';
+import { useProfileStore } from '@/store/profile';
+import { useSessionStore } from '@/store/session';
 
 function currentWeekStartIso(): string {
   return getMondayIso();
@@ -33,9 +35,29 @@ export default function HomeScreen() {
   const weekPlan = usePlanStore((s) => s.weeks[weekStart]);
   const fetchWeek = usePlanStore((s) => s.fetchWeek);
 
+  const profile = useProfileStore((s) => s.profile);
+  const fetchProfile = useProfileStore((s) => s.fetch);
+  const email = useSessionStore((s) => s.session?.user?.email ?? '');
+
   useEffect(() => {
     fetchWeek(weekStart).catch(() => {});
   }, [fetchWeek, weekStart]);
+
+  useEffect(() => {
+    fetchProfile().catch(() => {});
+  }, [fetchProfile]);
+
+  const avatarInitials = useMemo(() => {
+    const source = profile?.displayName || email;
+    if (!source) return 'M';
+    return source
+      .split(/[\s@.]/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join('')
+      .toUpperCase();
+  }, [profile?.displayName, email]);
 
   const plannedDays = useMemo(() => {
     const mask = [false, false, false, false, false, false, false];
@@ -52,7 +74,11 @@ export default function HomeScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.topBar}>
           <Text style={styles.wordmark}>mise</Text>
-          <Avatar initials="E" onPress={() => router.push('/(tabs)/profile')} />
+          <Avatar
+            initials={avatarInitials}
+            imageUrl={profile?.avatarUrl}
+            onPress={() => router.push('/(tabs)/profile')}
+          />
         </View>
 
         <View style={styles.greeting}>

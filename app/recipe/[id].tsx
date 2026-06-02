@@ -215,6 +215,29 @@ export default function RecipeDetailScreen() {
       .finally(() => setLoading(false));
   }, [id, recipeFromStore]);
 
+  // Progressive import: technique annotations are added in the background after
+  // the structure lands, so while the recipe is still "processing" we poll until
+  // it flips to "ready" and the techniques appear.
+  useEffect(() => {
+    if (!id || recipe?.status !== 'processing') return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const fresh = await recipesService.get(id);
+        if (cancelled) return;
+        setRecipe(fresh);
+        replaceInStore(fresh);
+        if (fresh.status !== 'processing') clearInterval(timer);
+      } catch {
+        // Transient error — keep polling.
+      }
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [id, recipe?.status, replaceInStore]);
+
   useEffect(() => {
     setServingsOverride(null);
   }, [id]);

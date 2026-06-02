@@ -4,7 +4,6 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Switch,
   TouchableOpacity,
   Image,
   ActivityIndicator,
@@ -13,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, typeScale, spacing, radius } from '@/constants';
@@ -25,9 +24,11 @@ import { useRecipesStore } from '@/store/recipes';
 type Mode = 'choose' | 'url' | 'photo';
 
 export default function ImportScreen() {
-  const [mode, setMode] = useState<Mode>('choose');
+  const params = useLocalSearchParams<{ mode?: string }>();
+  const initialMode: Mode =
+    params.mode === 'url' || params.mode === 'photo' ? params.mode : 'choose';
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [url, setUrl] = useState('');
-  const [fast, setFast] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,11 +43,17 @@ export default function ImportScreen() {
     setLoading(true);
     setError(null);
     try {
-      const recipe = await importService.fromUrl(url.trim(), { fast });
+      const recipe = await importService.fromUrl(url.trim());
       addRecipe(recipe);
       router.replace(`/recipe/${recipe.id}`);
-    } catch {
-      setError('Could not import recipe. Check the URL and try again.');
+    } catch (err: any) {
+      console.error('[url import]', err);
+      const detail = err?.message?.trim();
+      setError(
+        detail
+          ? `Import failed: ${detail}`
+          : 'Could not import recipe. Check the URL and try again.',
+      );
     } finally {
       setLoading(false);
     }
@@ -204,23 +211,6 @@ export default function ImportScreen() {
                 autoCorrect={false}
                 keyboardType="url"
               />
-
-              <View style={styles.fastRow}>
-                <View style={styles.fastText}>
-                  <Text style={styles.fastTitle}>Fast mode</Text>
-                  <Text style={styles.fastSub}>
-                    ~3× faster, slightly less precise quantities and technique
-                    detail.
-                  </Text>
-                </View>
-                <Switch
-                  value={fast}
-                  onValueChange={setFast}
-                  trackColor={{ false: colors.sand, true: colors.terra }}
-                  thumbColor={colors.cardBg}
-                  ios_backgroundColor={colors.sand}
-                />
-              </View>
 
               {error && <Text style={styles.error}>{error}</Text>}
 
@@ -411,29 +401,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.umber,
     textAlign: 'center',
-  },
-
-  fastRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.cardBg,
-    borderWidth: 0.5,
-    borderColor: colors.borderResting,
-    borderRadius: radius.card,
-    padding: spacing.md,
-  },
-  fastText: { flex: 1, gap: 2 },
-  fastTitle: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 15,
-    color: colors.espresso,
-  },
-  fastSub: {
-    fontFamily: fonts.bodyRegular,
-    fontSize: 12,
-    color: colors.umber,
-    lineHeight: 17,
   },
 
   pickerCard: {

@@ -26,8 +26,8 @@ backend/.pytest_cache/
 *.orig
 
 # Claude
-.claude/worktrees/
-.claude/agents/
+.claude/
+.pipeline/
 
 # Project docs (kept local only)
 CLAUDE.md

@@ -32,14 +32,32 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return {};
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function doFetch(path: string, init?: RequestInit): Promise<Response> {
   const authHeaders = await getAuthHeaders();
-  const res = await fetch(`${BASE_URL}${path}`, {
+  return fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json', ...authHeaders, ...init?.headers },
     ...init,
   });
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let res = await doFetch(path, init);
+
+  // A 401 often just means the access token expired between app open and now.
+  // Force a refresh and retry once before surfacing an error, so a persistent
+  // login doesn't produce spurious "unauthorized" failures.
+  if (res.status === 401) {
+    const { data } = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } }));
+    if (data.session) {
+      res = await doFetch(path, init);
+    }
+  }
+
   if (!res.ok) {
-    const text = await res.text();
+    const text = await res.text().catch(() => '');
+    if (res.status === 401) {
+      throw new Error('Your session has expired. Please sign in again.');
+    }
     throw new Error(text || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
