@@ -8,12 +8,35 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.schemas import RecipeExtraction
+from app.services.cache import TTLCache
 from app.services.downloader import download_video
 from app.services.media import extract_audio, extract_keyframes, extract_thumbnail
 from app.services.transcription import transcribe_audio
-from app.services.recipe_builder import build_recipe
+from app.services.recipe_builder import build_structure
 
 logger = logging.getLogger(__name__)
+
+# Cache the fully-enriched extraction (structure + techniques) by URL. Re-importing
+# the same video — the common case in demos and test runs — then skips
+# download, transcription, and both synthesis passes entirely. Keyed on the URL,
+# not per-user: the recipe is re-persisted fresh for whoever imports it (see
+# _persist_recipe), so sharing the extraction across users is safe. 24h TTL.
+_extraction_cache: TTLCache[RecipeExtraction] = TTLCache(ttl_seconds=24 * 3600)
+
+
+def _cache_key(url: str) -> str:
+    return url.strip()
+
+
+def get_cached_extraction(url: str) -> RecipeExtraction | None:
+    """Return a previously-enriched extraction for this URL, or None."""
+    return _extraction_cache.get(_cache_key(url))
+
+
+def cache_extraction(url: str, extraction: RecipeExtraction) -> None:
+    """Store the fully-enriched extraction for this URL (called once techniques
+    have been merged in, so cache hits serve complete recipes)."""
+    _extraction_cache.set(_cache_key(url), extraction)
 
 
 @dataclass
@@ -24,15 +47,16 @@ class PipelineResult:
     work_dir: Path
 
 
-async def process_video_url(url: str, fast: bool = False) -> PipelineResult:
-    """Full pipeline: download -> extract media -> transcribe -> build recipe.
+async def process_structure(url: str) -> PipelineResult:
+    """Stage A+B: download -> extract media -> transcribe -> build *structure*.
 
     Steps are pipelined for latency:
     - The audio→Whisper chain runs concurrently with keyframe+thumbnail extraction.
-    - GPT-4o is only called once both branches finish (it needs both signals).
+    - Structure synthesis runs once both branches finish (it needs both signals).
 
-    If *fast* is True, recipe extraction uses gpt-4o-mini (~3× faster) at a
-    small cost in ingredient/technique nuance.
+    Returns the structural recipe only — technique annotations are added
+    separately (see recipe_builder.enrich_techniques) so the caller can return
+    the structure to the client immediately and enrich in the background.
     """
     work_dir = Path(tempfile.mkdtemp(prefix="mise_"))
     t_start = time.perf_counter()
@@ -62,13 +86,13 @@ async def process_video_url(url: str, fast: bool = False) -> PipelineResult:
     )
     t_media = time.perf_counter()
 
-    # 3. Synthesize the structured recipe.
-    logger.info("Building recipe with GPT-4o (fast=%s)", fast)
-    extraction = await build_recipe(transcript, keyframe_paths, fast=fast)
+    # 3. Synthesize the structural recipe (fast vision model; no techniques yet).
+    logger.info("Building recipe structure")
+    extraction = await build_structure(transcript, keyframe_paths)
     t_synth = time.perf_counter()
 
     logger.info(
-        "Pipeline complete: '%s' (%d steps) — download=%.1fs media+whisper=%.1fs synth=%.1fs total=%.1fs",
+        "Structure complete: '%s' (%d steps) — download=%.1fs media+whisper=%.1fs structure=%.1fs total=%.1fs",
         extraction.title,
         len(extraction.steps),
         t_dl - t_start,

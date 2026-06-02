@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     # Voxtral Mini Transcribe via OpenRouter when set; otherwise OpenAI Whisper.
     transcribe_model: str = "mistralai/voxtral-mini-transcribe"
 
-    model_config = {"env_file": str(_ENV_FILE)}
+    # extra="ignore" so unrelated keys in .env / the shell environment (e.g. a
+    # stray ELEVENLABS_API_KEY) don't crash settings load — and thus startup.
+    model_config = {"env_file": str(_ENV_FILE), "extra": "ignore"}
 
 
 settings = Settings()

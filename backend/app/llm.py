@@ -47,6 +47,18 @@ def vision_model(fast: bool = False) -> str:
     return "gpt-4o-mini" if fast else "gpt-4o"
 
 
+def structure_model() -> str:
+    """Fast vision model for structural recipe extraction (title, ingredients,
+    steps, macros) — the bulk of the work, where a fast model is plenty."""
+    return vision_model(fast=True)
+
+
+def technique_model() -> str:
+    """Smart model for technique annotation — the differentiator. Used text-only
+    (no images), so the high-quality model stays cheap and fast here."""
+    return vision_model(fast=False)
+
+
 def transcribe_client() -> AsyncOpenAI:
     """Client for speech-to-text. Routes to OpenRouter (Voxtral Mini
     Transcribe) when configured, otherwise OpenAI Whisper."""

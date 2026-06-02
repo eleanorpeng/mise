@@ -124,6 +124,8 @@ async def create_recipe(data: dict, user_id: str = Depends(get_current_user)):
         "cuisine": data.get("cuisine"),
         "servings": data.get("servings", 2),
         "duration_minutes": data.get("durationMinutes"),
+        "difficulty": data.get("difficulty"),
+        "source_url": data.get("sourceUrl"),
         "status": "ready",
     }
     res = supabase.table("recipes").insert(row).execute()
@@ -143,6 +145,21 @@ async def create_recipe(data: dict, user_id: str = Depends(get_current_user)):
             for i, ing in enumerate(ingredients)
         ]
         supabase.table("ingredients").insert(ing_rows).execute()
+
+    steps = data.get("steps", [])
+    if steps:
+        step_rows = [
+            {
+                "recipe_id": recipe_id,
+                "instruction": s["instruction"],
+                "order_index": s.get("orderIndex", i),
+                "duration_seconds": s.get("durationSeconds"),
+            }
+            for i, s in enumerate(steps)
+            if s.get("instruction")
+        ]
+        if step_rows:
+            supabase.table("steps").insert(step_rows).execute()
 
     return assemble_recipe(recipe_id, user_id)
 
