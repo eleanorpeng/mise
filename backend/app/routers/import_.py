@@ -1,7 +1,16 @@
 import logging
 import shutil
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from openai import OpenAIError
 from pydantic import BaseModel
 
@@ -12,7 +21,12 @@ from app.schemas import ExtractedTechnique, RecipeExtraction, row_to_camel
 from app.services.downloader import DownloadError
 from app.services.media import MediaError
 from app.services.photo_pipeline import extract_recipe_from_photo
-from app.services.video_pipeline import process_video_url
+from app.services.recipe_builder import enrich_techniques
+from app.services.video_pipeline import (
+    cache_extraction,
+    get_cached_extraction,
+    process_structure,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +35,6 @@ router = APIRouter()
 
 class UrlImportRequest(BaseModel):
     url: str
-    fast: bool = False
 
 
 def _update_job_status(job_id: str, status: str, **extra) -> None:
@@ -64,12 +77,17 @@ def _persist_recipe(
     source_url: str,
     cover_url: str | None,
     source_type: str = "video",
+    status: str = "ready",
 ) -> dict:
     """Insert recipe + ingredients + steps + techniques + macros, then return
     a fully-assembled camelCase recipe dict.
 
     Persistence is batched — at most 5 round trips to Supabase regardless of
     how many ingredients/steps/techniques the recipe has.
+
+    ``status`` is "ready" by default. Progressive video imports persist the
+    structure as "processing" first, then flip to "ready" once techniques are
+    attached in the background (see :func:`_attach_techniques`).
     """
 
     # 1. Insert the recipe row.
@@ -84,7 +102,7 @@ def _persist_recipe(
         "difficulty": extraction.difficulty,
         "servings": extraction.servings,
         "duration_minutes": extraction.duration_minutes,
-        "status": "ready",
+        "status": status,
         "imported_at": "now()",
     }
     res = supabase.table("recipes").insert(recipe_row).execute()
@@ -213,11 +231,74 @@ def _assemble_in_memory(
     return recipe
 
 
+def _attach_techniques(recipe_id: str, extraction: RecipeExtraction) -> None:
+    """Upsert techniques from an enriched extraction and link them to the
+    already-persisted steps (matched by order_index), then flip the recipe to
+    "ready".
+
+    Runs in a background task after the structure has been returned to the
+    client. Always sets status to "ready" in the end — even if technique
+    attachment fails — so a recipe is never stranded in "processing".
+    """
+    try:
+        unique: dict[str, ExtractedTechnique] = {}
+        for step in extraction.steps:
+            if step.technique:
+                unique[step.technique.name] = step.technique
+
+        technique_id_by_name: dict[str, str] = {}
+        if unique:
+            tech_payload = [
+                {"name": t.name, "explanation": t.explanation, "category": t.category}
+                for t in unique.values()
+            ]
+            tech_res = (
+                supabase.table("techniques")
+                .upsert(tech_payload, on_conflict="name")
+                .execute()
+            )
+            technique_id_by_name = {t["name"]: t["id"] for t in (tech_res.data or [])}
+
+        # Link each annotated step by its order_index (which equals the step's
+        # position in the extraction — see _persist_recipe step insert).
+        for i, step in enumerate(extraction.steps):
+            if not step.technique:
+                continue
+            tech_id = technique_id_by_name.get(step.technique.name)
+            if not tech_id:
+                continue
+            (
+                supabase.table("steps")
+                .update({"technique_id": tech_id})
+                .eq("recipe_id", recipe_id)
+                .eq("order_index", i)
+                .execute()
+            )
+    except Exception:
+        logger.warning("Technique attachment failed for %s", recipe_id, exc_info=True)
+    finally:
+        supabase.table("recipes").update({"status": "ready"}).eq("id", recipe_id).execute()
+
+
+async def _enrich_in_background(recipe_id: str, url: str, extraction: RecipeExtraction) -> None:
+    """Background job: run the smart technique pass, cache the enriched result
+    for future imports of this URL, and attach techniques to the persisted recipe."""
+    try:
+        enriched = await enrich_techniques(extraction)
+        cache_extraction(url, enriched)
+        _attach_techniques(recipe_id, enriched)
+    except Exception:
+        logger.exception("Background enrichment failed for %s", recipe_id)
+        # Ensure the recipe is not stuck in "processing".
+        supabase.table("recipes").update({"status": "ready"}).eq("id", recipe_id).execute()
+
+
 @router.post("/url", status_code=201)
 @limiter.limit("10/minute")
 async def import_from_url(
     request: Request,
     body: UrlImportRequest,
+    background: BackgroundTasks,
     user_id: str = Depends(get_current_user),
 ):
     url = body.url.strip()
@@ -233,24 +314,33 @@ async def import_from_url(
     }).execute()
     job_id = job_res.data[0]["id"]
 
+    # Fast path: we've already synthesised this URL. Persist the complete,
+    # enriched recipe immediately (status "ready") — no pipeline, no background.
+    cached = get_cached_extraction(url)
+    if cached is not None:
+        full_recipe = _persist_recipe(user_id, cached, url, cover_url=None)
+        _update_job_status(job_id, "done", recipe_id=full_recipe["id"])
+        return full_recipe
+
     work_dir = None
     try:
         _update_job_status(job_id, "downloading")
-        result = await process_video_url(url, fast=body.fast)
+        result = await process_structure(url)
         work_dir = result.work_dir
 
         _update_job_status(job_id, "synthesising")
 
-        # Upload thumbnail
-        cover_url = None
-        if result.thumbnail_path and result.thumbnail_path.exists():
-            cover_url = _upload_thumbnail(result.thumbnail_path, job_id)
+        # Persist the structure as "processing" and return it right away so the
+        # client can render title/ingredients/steps. Techniques are added by a
+        # background pass; the recipe flips to "ready" when they land. Recipes
+        # default to the colored placeholder cover.
+        recipe = _persist_recipe(
+            user_id, result.extraction, url, cover_url=None, status="processing",
+        )
 
-        # Persist to normalized tables and assemble the response in-memory.
-        full_recipe = _persist_recipe(user_id, result.extraction, url, cover_url)
-
-        _update_job_status(job_id, "done", recipe_id=full_recipe["id"])
-        return full_recipe
+        background.add_task(_enrich_in_background, recipe["id"], url, result.extraction)
+        _update_job_status(job_id, "done", recipe_id=recipe["id"])
+        return recipe
 
     except DownloadError as exc:
         _update_job_status(job_id, "failed", error_message=str(exc))
@@ -298,9 +388,8 @@ async def import_from_photo(
 
     try:
         extraction = await extract_recipe_from_photo(image_bytes, mime, caption=caption)
-        cover_url = _upload_thumbnail_bytes(image_bytes, job_id, mime)
         full_recipe = _persist_recipe(
-            user_id, extraction, source_url="", cover_url=cover_url, source_type="photo",
+            user_id, extraction, source_url="", cover_url=None, source_type="photo",
         )
         _update_job_status(job_id, "done", recipe_id=full_recipe["id"])
         return full_recipe

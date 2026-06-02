@@ -16,8 +16,7 @@ function mimeFromName(name: string): string {
 }
 
 export const importService = {
-  fromUrl: (url: string, options?: { fast?: boolean }) =>
-    api.post<Recipe>('/import/url', { url, fast: options?.fast ?? false }),
+  fromUrl: (url: string) => api.post<Recipe>('/import/url', { url }),
 
   fromPhoto: async (
     imageUri: string,

@@ -12,8 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, spacing, radius } from '@/constants';
 import {
@@ -24,6 +24,8 @@ import {
 } from '@/services/chef';
 import { useRecipesStore } from '@/store/recipes';
 import { useProfileStore } from '@/store/profile';
+import { useChefHistoryStore } from '@/store/chefHistory';
+import { ChefHistorySheet } from './ChefHistorySheet';
 
 interface Turn {
   id: string;
@@ -32,6 +34,9 @@ interface Turn {
   recipe?: RecipeExtraction | null;
   suggestions?: string[];
 }
+
+let _idSeq = 0;
+const nextId = () => `t${++_idSeq}`;
 
 function uniqueMerge(a: string[] = [], b: string[] = []): string[] {
   const seen = new Set<string>();
@@ -46,45 +51,56 @@ function uniqueMerge(a: string[] = [], b: string[] = []): string[] {
   return out;
 }
 
-let _idSeq = 0;
-const nextId = () => `t${++_idSeq}`;
+function AssistantText({ text }: { text: string }) {
+  return <Text style={styles.assistantText}>{text}</Text>;
+}
 
-// Progressive word-by-word reveal — gives assistant replies the streaming
-// feel of Claude without server-sent events. Calls onDone when fully shown.
-function AssistantText({
-  text,
-  animate,
-  onTick,
-  onDone,
-}: {
-  text: string;
-  animate: boolean;
-  onTick?: () => void;
-  onDone?: () => void;
-}) {
-  const [shown, setShown] = useState(animate ? '' : text);
-
+function StopButton({ onPress }: { onPress: () => void }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    if (!animate) {
-      setShown(text);
-      return;
-    }
-    const words = text.split(' ');
-    let i = 0;
-    const id = setInterval(() => {
-      i += 1;
-      setShown(words.slice(0, i).join(' '));
-      onTick?.();
-      if (i >= words.length) {
-        clearInterval(id);
-        onDone?.();
-      }
-    }, 26);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, animate]);
-
-  return <Text style={styles.assistantText}>{shown}</Text>;
+    const loop = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(scale, {
+            toValue: 0.88,
+            duration: 650,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scale, {
+            toValue: 1,
+            duration: 650,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(opacity, {
+            toValue: 0.75,
+            duration: 650,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 650,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [scale, opacity]);
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={styles.send}>
+      <Animated.View
+        style={[styles.stopGlyph, { transform: [{ scale }], opacity }]}
+      />
+    </TouchableOpacity>
+  );
 }
 
 function ThinkingDots() {
@@ -183,10 +199,9 @@ function RecipePreview({
   );
 }
 
-export default function ChefScreen() {
+export function ChefChat() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { q } = useLocalSearchParams<{ q: string }>();
   const fetchRecipes = useRecipesStore((s) => s.fetch);
 
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -195,12 +210,29 @@ export default function ChefScreen() {
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
-  // The assistant turn currently revealing its text; recipe waits for it.
   const [streamingId, setStreamingId] = useState<string | null>(null);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const hydrateHistory = useChefHistoryStore((s) => s.hydrate);
+  const historyHydrated = useChefHistoryStore((s) => s.hydrated);
+  const startNewConvo = useChefHistoryStore((s) => s.startNew);
+  const setCurrentConvo = useChefHistoryStore((s) => s.setCurrent);
+  const saveTurnsToHistory = useChefHistoryStore((s) => s.saveTurns);
 
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
-  const startedRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const isResponding = pending || streamingId !== null;
+
+  // Hydrate the conversation list on mount. The active conversation (if any)
+  // gets its messages loaded lazily — only when the user reopens an old chat
+  // via the history sheet, so we don't pay for a turns fetch every app launch.
+  useEffect(() => {
+    if (historyHydrated) return;
+    hydrateHistory();
+  }, [historyHydrated, hydrateHistory]);
 
   const scrollToEnd = () => {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
@@ -208,9 +240,16 @@ export default function ChefScreen() {
 
   const send = async (text: string, priorTurns: Turn[]) => {
     setError(null);
+    if (!useChefHistoryStore.getState().currentId) {
+      // Wait for the server-issued id so the immediate saveTurns below has
+      // somewhere to land. If creation fails (offline / outage), continue
+      // anyway — saveTurns will quietly no-op and the user can still chat.
+      await startNewConvo();
+    }
     const userTurn: Turn = { id: nextId(), role: 'user', content: text };
     const withUser = [...priorTurns, userTurn];
     setTurns(withUser);
+    saveTurnsToHistory(withUser);
     setPending(true);
     scrollToEnd();
 
@@ -229,66 +268,138 @@ export default function ChefScreen() {
         }
       : undefined;
 
-    try {
-      const res = await chefService.chat(apiMessages, profileContext);
-      const assistantId = nextId();
-      setStreamingId(assistantId);
-      setTurns((prev) => [
-        ...prev,
-        {
-          id: assistantId,
-          role: 'assistant',
-          content: res.reply,
-          recipe: res.recipe,
-          suggestions: res.suggestions,
-        },
-      ]);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-      // Remember durable preferences the user stated, so future chats skip
-      // questions we already know the answer to.
-      if (res.learned) {
-        const cur = useProfileStore.getState().profile;
-        const dietary = uniqueMerge(
-          cur?.dietaryRestrictions,
-          res.learned.dietary_restrictions,
-        );
-        const cuisines = uniqueMerge(
-          cur?.cuisinePreferences,
-          res.learned.cuisine_preferences,
-        );
-        const changed =
-          dietary.length !== (cur?.dietaryRestrictions?.length ?? 0) ||
-          cuisines.length !== (cur?.cuisinePreferences?.length ?? 0);
-        if (changed) {
-          useProfileStore
-            .getState()
-            .update({ dietaryRestrictions: dietary, cuisinePreferences: cuisines })
-            .catch(() => {});
-        }
-      }
+    let assistantId: string | null = null;
+    let accumulated = '';
+
+    try {
+      await chefService.chatStream(apiMessages, profileContext, {
+        signal: controller.signal,
+        onDelta: (delta) => {
+          if (!delta) return;
+          accumulated += delta;
+          if (!assistantId) {
+            const newId = nextId();
+            assistantId = newId;
+            setPending(false);
+            setStreamingId(newId);
+            setTurns((prev) => [
+              ...prev,
+              { id: newId, role: 'assistant', content: accumulated },
+            ]);
+          } else {
+            const id = assistantId;
+            setTurns((prev) =>
+              prev.map((t) => (t.id === id ? { ...t, content: accumulated } : t)),
+            );
+          }
+          scrollToEnd();
+        },
+        onDone: (final) => {
+          if (controller.signal.aborted) return;
+          if (!assistantId) assistantId = nextId();
+          const finalTurn: Turn = {
+            id: assistantId,
+            role: 'assistant',
+            content: final.reply,
+            recipe: final.recipe,
+            suggestions: final.suggestions,
+          };
+          const nextTurns: Turn[] = [...withUser, finalTurn];
+          setTurns(nextTurns);
+          saveTurnsToHistory(nextTurns);
+          setStreamingId(null);
+
+          if (final.learned) {
+            const cur = useProfileStore.getState().profile;
+            const dietary = uniqueMerge(
+              cur?.dietaryRestrictions,
+              final.learned.dietary_restrictions,
+            );
+            const cuisines = uniqueMerge(
+              cur?.cuisinePreferences,
+              final.learned.cuisine_preferences,
+            );
+            const changed =
+              dietary.length !== (cur?.dietaryRestrictions?.length ?? 0) ||
+              cuisines.length !== (cur?.cuisinePreferences?.length ?? 0);
+            if (changed) {
+              useProfileStore
+                .getState()
+                .update({
+                  dietaryRestrictions: dietary,
+                  cuisinePreferences: cuisines,
+                })
+                .catch(() => {});
+            }
+          }
+        },
+      });
     } catch (err: any) {
+      if (err?.name === 'AbortError' || controller.signal.aborted) return;
       setError(err?.message || 'The chef is unavailable. Try again.');
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setPending(false);
+      setStreamingId((id) => (id === assistantId ? null : id));
       scrollToEnd();
     }
   };
 
-  // Kick off with the ingredients the user typed on the recipes tab.
-  useEffect(() => {
-    if (startedRef.current) return;
-    const initial = (q || '').trim();
-    if (!initial) return;
-    startedRef.current = true;
-    send(initial, []);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
-
   const handleSend = () => {
     const text = draft.trim();
-    if (!text || pending) return;
+    if (!text || isResponding) return;
     setDraft('');
     send(text, turns);
+  };
+
+  const handleStop = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setPending(false);
+    setStreamingId(null);
+  };
+
+  const handleNewChat = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setCurrentConvo(null);
+    setTurns([]);
+    setDraft('');
+    setError(null);
+    setStreamingId(null);
+    setPending(false);
+    setSavingId(null);
+    setSavedId(null);
+  };
+
+  const handleOpenConversation = async (id: string) => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setCurrentConvo(id);
+    setDraft('');
+    setError(null);
+    setStreamingId(null);
+    setPending(true);
+    setSavingId(null);
+    setSavedId(null);
+    setHistoryOpen(false);
+    const loaded = await useChefHistoryStore.getState().loadTurns(id);
+    setPending(false);
+    if (loaded) {
+      setTurns(loaded);
+      scrollToEnd();
+    } else {
+      setError('Could not load that chat.');
+    }
   };
 
   const handleSave = async (turn: Turn) => {
@@ -298,7 +409,7 @@ export default function ChefScreen() {
       const saved = await chefService.save(turn.recipe);
       setSavedId(turn.id);
       fetchRecipes();
-      router.replace(`/recipe/${saved.id}`);
+      router.push(`/recipe/${saved.id}`);
     } catch (err: any) {
       setError(err?.message || 'Could not save the recipe.');
     } finally {
@@ -306,21 +417,55 @@ export default function ChefScreen() {
     }
   };
 
+  const isEmpty = turns.length === 0 && !pending;
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={12} style={styles.iconBtn}>
-          <MaterialCommunityIcons name="close" size={22} color={colors.espresso} />
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+    >
+      <View style={styles.chatHeader}>
+        <TouchableOpacity
+          onPress={() => setHistoryOpen(true)}
+          hitSlop={10}
+          style={styles.headerBtn}
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons
+            name="history"
+            size={16}
+            color={colors.umber}
+          />
+          <Text style={styles.headerBtnText}>History</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Ask the chef</Text>
-        <View style={{ width: 32 }} />
+        {turns.length > 0 ? (
+          <TouchableOpacity
+            onPress={handleNewChat}
+            hitSlop={10}
+            style={styles.headerBtn}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons
+              name="square-edit-outline"
+              size={16}
+              color={colors.umber}
+            />
+            <Text style={styles.headerBtnText}>New chat</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
-      >
+      {isEmpty ? (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyEyebrow}>Ask the chef</Text>
+          <Text style={styles.emptyTitle}>What's in your kitchen?</Text>
+          <Text style={styles.emptyHelp}>
+            Tell me the ingredients you have and I'll suggest a dish — I might
+            ask a question or two first.
+          </Text>
+        </View>
+      ) : (
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
@@ -349,12 +494,7 @@ export default function ChefScreen() {
               t.suggestions.length > 0;
             return (
               <View key={t.id} style={styles.assistantRow}>
-                <AssistantText
-                  text={t.content}
-                  animate={isStreaming}
-                  onTick={scrollToEnd}
-                  onDone={() => setStreamingId((id) => (id === t.id ? null : id))}
-                />
+                <AssistantText text={t.content} />
                 {t.recipe && !isStreaming ? (
                   <RecipePreview
                     recipe={t.recipe}
@@ -399,55 +539,98 @@ export default function ChefScreen() {
           {pending ? <ThinkingDots /> : null}
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </ScrollView>
+      )}
 
-        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-          <TextInput
-            ref={inputRef}
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Reply with a message…"
-            placeholderTextColor={colors.umber}
-            style={styles.composerInput}
-            multiline
-            returnKeyType="send"
-            onSubmitEditing={handleSend}
-          />
+      <View style={[styles.composer, { paddingBottom: insets.bottom + 64 }]}>
+        <TextInput
+          ref={inputRef}
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="List ingredients you have…"
+          placeholderTextColor={colors.umber}
+          style={styles.composerInput}
+          selectionColor={colors.terra}
+          cursorColor={colors.terra}
+          multiline
+          returnKeyType="send"
+          onSubmitEditing={handleSend}
+        />
+        {isResponding ? (
+          <StopButton onPress={handleStop} />
+        ) : (
           <TouchableOpacity
-            style={[styles.send, (!draft.trim() || pending) && styles.sendDisabled]}
+            style={[styles.send, !draft.trim() && styles.sendDisabled]}
             activeOpacity={0.85}
             onPress={handleSend}
-            disabled={!draft.trim() || pending}
+            disabled={!draft.trim()}
           >
             <MaterialCommunityIcons name="arrow-up" size={20} color={colors.textOnDark} />
           </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        )}
+      </View>
+
+      <ChefHistorySheet
+        visible={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onOpenConversation={handleOpenConversation}
+      />
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.oat },
   flex: { flex: 1 },
 
-  topBar: {
+  chatHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.lg,
   },
-  iconBtn: {
-    width: 32,
-    height: 32,
+  headerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    backgroundColor: colors.linen,
+  },
+  headerBtnText: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    color: colors.umber,
+  },
+
+  emptyWrap: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.xl3,
+    gap: spacing.sm,
   },
-  title: {
+  emptyEyebrow: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: colors.umber,
+  },
+  emptyTitle: {
     fontFamily: fonts.display,
-    fontSize: 18,
+    fontSize: 28,
+    lineHeight: 34,
     color: colors.espresso,
+    textAlign: 'center',
+  },
+  emptyHelp: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 14,
+    lineHeight: 21,
+    color: colors.umber,
+    textAlign: 'center',
+    marginTop: 4,
   },
 
   thread: {
@@ -457,10 +640,7 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
   },
 
-  // User: subtle contained bubble, right-aligned (Claude-style)
-  userRow: {
-    alignItems: 'flex-end',
-  },
+  userRow: { alignItems: 'flex-end' },
   userBubble: {
     maxWidth: '88%',
     backgroundColor: colors.linen,
@@ -475,10 +655,7 @@ const styles = StyleSheet.create({
     color: colors.espresso,
   },
 
-  // Assistant: full-width plain text, no bubble
-  assistantRow: {
-    alignItems: 'flex-start',
-  },
+  assistantRow: { alignItems: 'flex-start' },
   assistantText: {
     fontFamily: fonts.bodyRegular,
     fontSize: 16,
@@ -490,38 +667,6 @@ const styles = StyleSheet.create({
     height: 9,
     borderRadius: radius.avatar,
     backgroundColor: colors.terra,
-  },
-
-  suggestionWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  suggestionChip: {
-    backgroundColor: colors.linen,
-    borderRadius: radius.pill,
-    borderWidth: 0.5,
-    borderColor: colors.borderResting,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-  },
-  suggestionText: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 13,
-    color: colors.espresso,
-  },
-  suggestionChipCustom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'transparent',
-    borderColor: colors.borderEmphasis,
-  },
-  suggestionTextCustom: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 13,
-    color: colors.umber,
   },
 
   recipeCard: {
@@ -576,13 +721,43 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     alignItems: 'center',
   },
-  saveBtnDisabled: {
-    opacity: 0.55,
-  },
+  saveBtnDisabled: { opacity: 0.55 },
   saveBtnText: {
     fontFamily: fonts.bodyMedium,
     fontSize: 15,
     color: colors.textOnDark,
+  },
+
+  suggestionWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  suggestionChip: {
+    backgroundColor: colors.linen,
+    borderRadius: radius.pill,
+    borderWidth: 0.5,
+    borderColor: colors.borderResting,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  suggestionText: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
+    color: colors.espresso,
+  },
+  suggestionChipCustom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'transparent',
+    borderColor: colors.borderEmphasis,
+  },
+  suggestionTextCustom: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
+    color: colors.umber,
   },
 
   errorText: {
@@ -599,14 +774,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
   },
   composerInput: {
     flex: 1,
-    backgroundColor: colors.linen,
+    backgroundColor: colors.cardBg,
     borderRadius: radius.inner,
     borderWidth: 0.5,
-    borderColor: colors.sand,
+    borderColor: colors.borderResting,
     paddingHorizontal: spacing.md,
     paddingTop: 11,
     paddingBottom: 11,
@@ -619,11 +793,15 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: radius.avatar,
-    backgroundColor: colors.espresso,
+    backgroundColor: colors.terra,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendDisabled: {
-    opacity: 0.4,
+  sendDisabled: { opacity: 0.4 },
+  stopGlyph: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    backgroundColor: colors.textOnDark,
   },
 });

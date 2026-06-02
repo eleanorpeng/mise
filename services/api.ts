@@ -32,24 +32,49 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return {};
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function doFetch(path: string, init?: RequestInit): Promise<Response> {
   const authHeaders = await getAuthHeaders();
-  const res = await fetch(`${BASE_URL}${path}`, {
+  return fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json', ...authHeaders, ...init?.headers },
     ...init,
   });
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let res = await doFetch(path, init);
+
+  // A 401 often just means the access token expired between app open and now.
+  // Force a refresh and retry once before surfacing an error, so a persistent
+  // login doesn't produce spurious "unauthorized" failures.
+  if (res.status === 401) {
+    const { data } = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } }));
+    if (data.session) {
+      res = await doFetch(path, init);
+    }
+  }
+
   if (!res.ok) {
-    const text = await res.text();
+    const text = await res.text().catch(() => '');
+    if (res.status === 401) {
+      throw new Error('Your session has expired. Please sign in again.');
+    }
     throw new Error(text || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
 
+interface RequestOpts {
+  signal?: AbortSignal;
+}
+
 export const api = {
-  get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
-  patch: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
-  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  get: <T>(path: string, opts?: RequestOpts) => request<T>(path, { signal: opts?.signal }),
+  post: <T>(path: string, body: unknown, opts?: RequestOpts) =>
+    request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal }),
+  put: <T>(path: string, body: unknown, opts?: RequestOpts) =>
+    request<T>(path, { method: 'PUT', body: JSON.stringify(body), signal: opts?.signal }),
+  patch: <T>(path: string, body: unknown, opts?: RequestOpts) =>
+    request<T>(path, { method: 'PATCH', body: JSON.stringify(body), signal: opts?.signal }),
+  delete: <T>(path: string, opts?: RequestOpts) =>
+    request<T>(path, { method: 'DELETE', signal: opts?.signal }),
 };

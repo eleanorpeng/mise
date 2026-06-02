@@ -4,6 +4,9 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
+    "start:local": "EXPO_PUBLIC_API_URL= expo start -c",
+    "start:deployed": "EXPO_PUBLIC_API_URL=https://mise-eni44.ondigitalocean.app expo start -c",
+    "backend": "cd backend && uvicorn app.main:app --reload --port 8000",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "eslint . --ext .ts,.tsx",
@@ -19,7 +22,7 @@
     "@supabase/supabase-js": "^2.104.0",
     "expo": "^54.0.34",
     "expo-apple-authentication": "~8.0.8",
-    "expo-audio": "^55.0.14",
+    "expo-audio": "~1.1.1",
     "expo-blur": "~15.0.8",
     "expo-camera": "~17.0.10",
     "expo-constants": "~18.0.13",

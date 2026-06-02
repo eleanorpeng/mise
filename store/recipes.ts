@@ -7,6 +7,7 @@ interface RecipesStore {
   loading: boolean;
   fetch: () => Promise<void>;
   add: (recipe: Recipe) => void;
+  replace: (recipe: Recipe) => void;
   remove: (id: string) => void;
 }
 
@@ -25,5 +26,9 @@ export const useRecipesStore = create<RecipesStore>((set) => ({
     }
   },
   add: (recipe) => set((s) => ({ recipes: [recipe, ...s.recipes] })),
+  replace: (recipe) =>
+    set((s) => ({
+      recipes: s.recipes.map((r) => (r.id === recipe.id ? recipe : r)),
+    })),
   remove: (id) => set((s) => ({ recipes: s.recipes.filter((r) => r.id !== id) })),
 }));

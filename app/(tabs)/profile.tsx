@@ -193,21 +193,6 @@ export default function ProfileScreen() {
           />
         </View>
 
-        <SectionLabel>Help & about</SectionLabel>
-        <View style={styles.settingsCard}>
-          <SettingRow
-            icon="lifebuoy"
-            label="Help center"
-            onPress={() => Alert.alert('Coming soon')}
-          />
-          <Divider />
-          <SettingRow
-            icon="information-outline"
-            label="About mise"
-            onPress={() => Alert.alert('mise', 'Cook better, one recipe at a time.')}
-          />
-        </View>
-
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>

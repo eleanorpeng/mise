@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Image,
   ActivityIndicator,
   TouchableOpacity,
   LayoutAnimation,
   Platform,
   UIManager,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 
 if (
   Platform.OS === 'android' &&
@@ -23,6 +24,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, typeScale, spacing, radius } from '@/constants';
 import { Chip } from '@/components/ui/Chip';
+import { RecipeCover } from '@/components/recipe/RecipeCover';
 import { AddToCollectionSheet } from '@/components/recipe/AddToCollectionSheet';
 import { AddToPlanSheet } from '@/components/recipe/AddToPlanSheet';
 import { useRecipesStore } from '@/store/recipes';
@@ -95,6 +97,9 @@ export default function RecipeDetailScreen() {
     'per-serving',
   );
 
+  const replaceInStore = useRecipesStore((s) => s.replace);
+  const [coverBusy, setCoverBusy] = useState(false);
+
   const collections = useCollectionsStore((s) => s.collections);
   const collectionsForRecipe = collections.filter((c) =>
     id ? c.recipeIds.includes(id) : false,
@@ -126,6 +131,64 @@ export default function RecipeDetailScreen() {
     });
   };
 
+  const pickAndUploadCover = async () => {
+    if (!recipe || coverBusy) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Photo access needed', 'Allow photo library access to set a cover.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setCoverBusy(true);
+    try {
+      const updated = await recipesService.uploadCover(recipe.id, {
+        uri: asset.uri,
+        mimeType: asset.mimeType ?? 'image/jpeg',
+        fileName: asset.fileName ?? null,
+      });
+      setRecipe(updated);
+      replaceInStore(updated);
+    } catch (err: any) {
+      Alert.alert('Could not save cover', err?.message ?? 'Try again in a moment.');
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
+  const removeCover = async () => {
+    if (!recipe || coverBusy) return;
+    setCoverBusy(true);
+    try {
+      const updated = await recipesService.removeCover(recipe.id);
+      setRecipe(updated);
+      replaceInStore(updated);
+    } catch (err: any) {
+      Alert.alert('Could not remove cover', err?.message ?? 'Try again in a moment.');
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
+  const handleEditCover = () => {
+    if (!recipe || coverBusy) return;
+    if (recipe.coverImageUrl) {
+      Alert.alert('Recipe cover', undefined, [
+        { text: 'Replace photo', onPress: pickAndUploadCover },
+        { text: 'Remove photo', onPress: removeCover, style: 'destructive' },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else {
+      pickAndUploadCover();
+    }
+  };
+
   const handleAddAllIngredientsToGrocery = () => {
     if (!recipe) return;
     recipe.ingredients.forEach((ing, i) => {
@@ -151,6 +214,29 @@ export default function RecipeDetailScreen() {
       .catch(() => setError('Could not load recipe'))
       .finally(() => setLoading(false));
   }, [id, recipeFromStore]);
+
+  // Progressive import: technique annotations are added in the background after
+  // the structure lands, so while the recipe is still "processing" we poll until
+  // it flips to "ready" and the techniques appear.
+  useEffect(() => {
+    if (!id || recipe?.status !== 'processing') return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const fresh = await recipesService.get(id);
+        if (cancelled) return;
+        setRecipe(fresh);
+        replaceInStore(fresh);
+        if (fresh.status !== 'processing') clearInterval(timer);
+      } catch {
+        // Transient error — keep polling.
+      }
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [id, recipe?.status, replaceInStore]);
 
   useEffect(() => {
     setServingsOverride(null);
@@ -254,17 +340,30 @@ export default function RecipeDetailScreen() {
           </View>
         </View>
 
-        {recipe.coverImageUrl ? (
-          <Image source={{ uri: recipe.coverImageUrl }} style={styles.cover} />
-        ) : (
-          <View style={[styles.cover, styles.coverFallback]}>
-            <MaterialCommunityIcons
-              name="silverware-fork-knife"
-              size={32}
-              color={colors.umber}
-            />
+        <TouchableOpacity
+          activeOpacity={0.92}
+          onPress={handleEditCover}
+          disabled={coverBusy}
+          style={styles.coverWrap}
+        >
+          <RecipeCover recipe={recipe} style={styles.cover} letterSize={140} />
+          <View style={styles.coverBadge}>
+            {coverBusy ? (
+              <ActivityIndicator size="small" color={colors.espresso} />
+            ) : (
+              <>
+                <MaterialCommunityIcons
+                  name={recipe.coverImageUrl ? 'image-edit-outline' : 'image-plus'}
+                  size={14}
+                  color={colors.espresso}
+                />
+                <Text style={styles.coverBadgeText}>
+                  {recipe.coverImageUrl ? 'Edit cover' : 'Add photo'}
+                </Text>
+              </>
+            )}
           </View>
-        )}
+        </TouchableOpacity>
 
         <View style={styles.headerBlock}>
           <Text style={styles.title}>{recipe.title}</Text>
@@ -682,7 +781,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.umber,
   },
-  content: { paddingBottom: 96 },
+  content: { paddingBottom: 128 },
 
   cookAlongBar: {
     position: 'absolute',
@@ -733,15 +832,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  coverWrap: {
+    marginTop: spacing.lg,
+    position: 'relative',
+  },
   cover: {
     width: '100%',
     aspectRatio: 4 / 3,
     backgroundColor: colors.linen,
-    marginTop: spacing.lg,
   },
-  coverFallback: {
+  coverBadge: {
+    position: 'absolute',
+    bottom: spacing.md,
+    right: spacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(245, 239, 224, 0.92)',
+  },
+  coverBadgeText: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    color: colors.espresso,
   },
 
   headerBlock: {

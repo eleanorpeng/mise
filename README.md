@@ -1,69 +1,68 @@
 # Mise
 
-A React Native (Expo) cooking app with a FastAPI backend. Imports TikTok/Reels videos and restaurant photos into structured recipes, plus a meal planner, voice cook-along, and a sticker-based cook log.
+A React Native (Expo) cooking app with a FastAPI backend. Imports TikTok/Reels videos and restaurant photos into structured recipes, plus an AI chef chatbot that turns the ingredients you have on hand into a recipe, a meal planner, voice cook-along, a sticker-based cook log, and a shareable monthly recap.
 
 See `CLAUDE.md` for the full feature spec and `DESIGN_SYSTEM.md` for the visual system.
 
 ---
 
-## Quickstart
-
-You need **two terminals running at the same time**: one for the backend, one for Expo.
-
-### Terminal 1 — Backend
+## TL;DR
 
 ```bash
-cd backend
-source .venv/bin/activate              # create with: python -m venv .venv
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### Terminal 2 — Frontend
-
-```bash
+npm install --legacy-peer-deps
+cp .env.example .env
 npx expo start -c
 ```
 
-Then scan the QR with the **Expo Go** app on your phone (or press `i` for iOS sim, `a` for Android emulator).
-
-> ⚠️ The two flags that catch people out: `--host 0.0.0.0` on uvicorn (so your phone can reach it) and `-c` on `expo start` (so `.env` changes get picked up). Skip either and things break in confusing ways.
+Then scan the QR with Expo Go.
 
 ---
 
-## First-time setup
+## Quickstart
 
-### 1. Install dependencies
+The backend (and all its API keys) is hosted on **DigitalOcean App Platform**, so you only run the frontend. No Python, database, or API keys to set up.
 
-```bash
-# repo root — frontend
-npm install --legacy-peer-deps
+The whole app runs in **Expo Go** — there are no custom native modules, so no development build is required.
 
-# backend
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+1. Install frontend deps:
+   ```bash
+   npm install --legacy-peer-deps
+   ```
+2. Copy the prefilled env file (already points at the hosted backend — no edits needed):
+   ```bash
+   cp .env.example .env
+   ```
+3. Start Expo:
+   ```bash
+   npx expo start -c
+   ```
+   The `-c` matters — `EXPO_PUBLIC_*` values are baked in at bundler start, so `.env` changes only take effect on a fresh start, not hot reload.
+4. Scan the QR with **Expo Go** (or press `i` for iOS sim, `a` for Android emulator).
 
-### 2. Frontend `.env`
+That's it. To verify the backend is reachable, open `https://mise-eni44.ondigitalocean.app/health` in a browser — it should return `{"status":"ok"}`.
 
-Copy `.env.example` to `.env` at the repo root and fill in:
+---
 
-```
-EXPO_PUBLIC_API_URL=http://<YOUR_MAC_LAN_IP>:8000
-EXPO_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=<your-anon-or-publishable-key>
-```
+## AI providers
 
-Find your Mac's LAN IP with:
+The backend routes each AI task to a provider via a small client factory (`backend/app/llm.py`), falling back to OpenAI whenever the optional keys are absent:
 
-```bash
-ipconfig getifaddr en0
-```
+| Task | Provider when key set | Fallback |
+|---|---|---|
+| Text chat — chef chatbot + voice intent | DigitalOcean serverless inference (`DO_INFERENCE_API_KEY`, `CHAT_MODEL`, default `llama3.3-70b-instruct`) | OpenAI |
+| Vision — photo + video recipe import | OpenRouter (`OPENROUTER_API_KEY`, `VISION_MODEL`, default `google/gemini-2.5-pro`) | OpenAI `gpt-4o` |
+| Transcription — video import + voice cook-along | Mistral Voxtral Mini Transcribe via OpenRouter (`OPENROUTER_API_KEY`, `TRANSCRIBE_MODEL`, default `mistralai/voxtral-mini-transcribe`) | OpenAI Whisper `whisper-1` |
+| Text-to-speech — voice cook-along | Mistral Voxtral Mini TTS via OpenRouter (`OPENROUTER_API_KEY`, `VOXTRAL_TTS_MODEL`, default `mistralai/voxtral-mini-tts-2603`) | OpenAI TTS |
 
-> Do **not** use `http://localhost:8000`. Your phone runs the JS bundle locally — `localhost` resolves to the *phone*, not your Mac.
+So with only `OPENAI_API_KEY` set, everything works on OpenAI. Setting `DO_INFERENCE_API_KEY` routes text chat to DigitalOcean; setting `OPENROUTER_API_KEY` routes vision, transcription, and TTS to OpenRouter — all without code changes. Optional model overrides: `CHAT_MODEL`, `VISION_MODEL`, `VISION_MODEL_FAST`, `TRANSCRIBE_MODEL`, `VOXTRAL_TTS_MODEL`.
 
-### 3. Backend `backend/.env`
+---
+
+## Running or deploying the backend yourself
+
+> Only needed if you're changing the backend. Running the app against the hosted backend (Quickstart) needs none of this.
+
+### Backend env (`backend/.env`)
 
 Copy `backend/.env.example` to `backend/.env` and fill in:
 
@@ -71,91 +70,58 @@ Copy `backend/.env.example` to `backend/.env` and fill in:
 SUPABASE_URL=https://<your-project>.supabase.co
 SUPABASE_SERVICE_KEY=<service-role-key>
 SUPABASE_JWT_SECRET=<jwt-secret-from-supabase-settings>
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=sk-...            # fallback for chat / vision / transcription / TTS
 EDAMAM_APP_ID=...
 EDAMAM_APP_KEY=...
+DO_INFERENCE_API_KEY=...         # optional — routes text chat to DigitalOcean credits
+OPENROUTER_API_KEY=sk-or-...     # optional — routes vision, transcription + TTS to OpenRouter
 ```
 
-`SUPABASE_URL` here must match `EXPO_PUBLIC_SUPABASE_URL` in the frontend — otherwise you'll be authenticated as different users on each side.
+`SUPABASE_URL` must match `EXPO_PUBLIC_SUPABASE_URL` in the frontend, or the two sides authenticate as different users. Only `OPENAI_API_KEY` is required for AI features — the rest are optional (see **AI providers**).
 
-### 4. Database
+### Database
 
 In Supabase Dashboard → SQL Editor, run each migration in order:
 
 1. `backend/supabase_migration.sql` (base schema)
 2. `backend/supabase_migration_collections.sql`
 3. `backend/supabase_migration_cook_log.sql`
+4. `backend/supabase_migration_profiles.sql` (onboarding + the chef's preference memory)
+5. `backend/supabase_migration_chef_history.sql` (chef chat conversations + messages)
 
-After running migrations, open Supabase **API Docs** in the dashboard once — that forces PostgREST to refresh its schema cache.
+Then open Supabase **API Docs** once — that forces PostgREST to refresh its schema cache.
 
----
-
-## Verifying the connection
-
-Before opening the app, confirm everything is wired up:
+### Run locally
 
 ```bash
-# from your Mac
-curl http://localhost:8000/health
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Then on your **phone's browser**, open:
+Point the app at it by setting `EXPO_PUBLIC_API_URL` to your Mac's LAN IP (`http://<LAN_IP>:8000`, find it with `ipconfig getifaddr en0`) — **not** `localhost`, which resolves to the phone, not your Mac. Restart Expo with `npx expo start -c` after changing `.env`. Both flags matter: `--host 0.0.0.0` so your phone can reach uvicorn, and `-c` so `.env` changes get picked up.
 
-```
-http://<YOUR_MAC_LAN_IP>:8000/docs
-```
+### Deploy (DigitalOcean App Platform)
 
-If FastAPI's Swagger page loads on your phone, the app will be able to reach the backend too.
+The backend includes a `Dockerfile` (adds `ffmpeg` for video import and the image libs `rembg` needs for sticker cut-outs).
 
----
+1. Push to GitHub, then create an App on **DigitalOcean App Platform** from the repo with **source directory `backend`** — it builds from `backend/Dockerfile` and serves on port `8080`.
+2. Add the `backend/.env` variables in the App Platform console (Settings → Environment Variables).
+3. Set the frontend `EXPO_PUBLIC_API_URL` to the deployed URL (no trailing slash) and restart Expo with `npx expo start -c`.
 
-## Common issues
-
-### "Network request failed"
-
-In order of likelihood:
-1. `.env` still says `localhost`. Use your LAN IP.
-2. Forgot `-c` after editing `.env`. Stop Metro, run `npx expo start -c`. `EXPO_PUBLIC_*` values are baked in at bundler start, not on hot reload.
-3. Backend started without `--host 0.0.0.0`.
-4. Phone and Mac are on different Wi-Fi (or the network has client isolation).
-5. macOS firewall is blocking inbound. System Settings → Network → Firewall.
-
-### 401 Unauthorized on `/recipes/`
-
-Backend returned `307 → /recipes/` and the HTTP client dropped the `Authorization` header on the redirect. Make sure all API calls include the trailing slash for router-root paths (already fixed in `services/recipes.ts`, `services/planner.ts`).
-
-### "Could not find table 'public.X' in the schema cache"
-
-You haven't run that table's migration yet. Run the SQL files in `backend/` in the Supabase SQL editor (see step 4).
-
-### "I have to log in again every reload"
-
-Session persistence is wired in `lib/supabase.ts` (AsyncStorage + AppState). If you're still seeing it:
-- Expo Go sandboxes AsyncStorage — uninstalling Expo Go wipes the session.
-- If your refresh token expired before the AppState wiring landed, log in once more.
-
-### Recipe detail shows only the title and photo
-
-The list endpoint returns summaries (no ingredients/steps). The detail screen fetches the full record from `/recipes/{id}` — if that's failing, check uvicorn logs for the request line.
+Health check: `GET /health` → `{"status":"ok"}`. The bare URL returning `{"detail":"Not Found"}` is expected — there's no root route, only `/health` and the prefixed routers.
 
 ---
 
 ## Useful commands
 
 ```bash
-# Frontend
 npm run start         # expo start
 npm run ios           # iOS simulator
 npm run android       # Android emulator
 npm run typecheck     # tsc --noEmit
 npm run lint          # eslint
-
-# Backend (from backend/)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Diagnostics
-ipconfig getifaddr en0                   # your Mac's LAN IP
-curl http://localhost:8000/health        # is backend up?
 ```
 
 ---
@@ -163,14 +129,17 @@ curl http://localhost:8000/health        # is backend up?
 ## Project structure
 
 ```
-app/             # expo-router screens — (tabs)/, recipe/[id].tsx, cook-log/, etc.
-components/      # ui/ primitives, home/, recipe/, cook-log/
+app/             # expo-router screens — (tabs)/, recipe/[id].tsx, cook-along/, recap/, cook-log/
+components/      # ui/ primitives, home/, recipe/, cook-log/, chef/ (ChefChat)
 constants/       # colors, typography, spacing — single source of truth
 hooks/           # useFonts, useGreeting, useVoice
 lib/             # supabase client (with RN AppState wiring)
-services/        # API calls (api.ts base, recipes, planner, cookLog, etc.)
+services/        # API calls (api.ts base, recipes, planner, cookLog, chef, recap, voice)
 store/           # Zustand stores
 types/           # shared TS interfaces
-backend/app/     # FastAPI — routers/, services/, schemas, auth
+backend/app/     # FastAPI — routers/ (incl. chef, recap, voice), services/, llm.py, schemas, auth
+backend/Dockerfile  # App Platform build (ffmpeg + rembg deps)
 backend/*.sql    # Supabase migrations
 ```
+
+The chef chatbot lives in the **Recipe tab** behind a *Cookbooks ⇄ Chef* toggle (not a separate tab). Voice cook-along records with `expo-audio` and transcribes via the backend `/voice/cook-along` Whisper endpoint, so the whole app runs in **Expo Go** — no custom native modules or dev build required.

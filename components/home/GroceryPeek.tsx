@@ -1,25 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors, fonts, spacing, radius } from '@/constants';
 import { usePlanStore, getMondayIso } from '@/store/plan';
-import type { GroceryItem } from '@/types';
 
 function currentWeekStartIso(): string {
   return getMondayIso();
 }
 
-function formatQty(item: GroceryItem): string {
-  if (item.totalQuantity == null) return '';
-  return item.unit ? `${item.totalQuantity} ${item.unit}` : String(item.totalQuantity);
-}
-
 export function GroceryPeek() {
+  const router = useRouter();
   const weekStart = currentWeekStartIso();
   const items = usePlanStore((s) => s.groceryByWeek[weekStart] ?? []);
   const fetchGroceryList = usePlanStore((s) => s.fetchGroceryList);
-  const toggle = usePlanStore((s) => s.toggleGroceryItem);
-  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     fetchGroceryList(weekStart).catch(() => {});
@@ -33,8 +27,8 @@ export function GroceryPeek() {
     <View style={styles.card}>
       <TouchableOpacity
         style={styles.header}
-        onPress={() => total > 0 && setExpanded((e) => !e)}
-        activeOpacity={total > 0 ? 0.8 : 1}
+        onPress={() => router.push('/(tabs)/plan?tab=grocery')}
+        activeOpacity={0.8}
       >
         <View style={styles.iconBox}>
           <MaterialCommunityIcons name="format-list-checks" size={16} color={colors.sage} />
@@ -47,42 +41,15 @@ export function GroceryPeek() {
               : `${doneCount} of ${total} items ticked off`}
           </Text>
         </View>
-        {total > 0 && (
-          <View style={styles.headerRight}>
+        <View style={styles.headerRight}>
+          {total > 0 && (
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: fillWidth }]} />
             </View>
-            <MaterialCommunityIcons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={colors.umber}
-            />
-          </View>
-        )}
-      </TouchableOpacity>
-
-      {expanded && total > 0 && (
-        <View style={styles.list}>
-          {items.map((item, i) => (
-            <TouchableOpacity
-              key={item.id}
-              style={[styles.item, i < items.length - 1 && styles.itemBorder]}
-              onPress={() => toggle(item.id, weekStart)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.checkbox, item.checked && styles.checkboxChecked]}>
-                {item.checked && (
-                  <MaterialCommunityIcons name="check" size={12} color={colors.textOnDark} />
-                )}
-              </View>
-              <Text style={[styles.itemName, item.checked && styles.itemNameDone]}>
-                {item.ingredientName}
-              </Text>
-              <Text style={styles.itemQty}>{formatQty(item)}</Text>
-            </TouchableOpacity>
-          ))}
+          )}
+          <MaterialCommunityIcons name="chevron-right" size={16} color={colors.umber} />
         </View>
-      )}
+      </TouchableOpacity>
     </View>
   );
 }
@@ -141,48 +108,5 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 3,
     backgroundColor: colors.sage,
-  },
-  list: {
-    borderTopWidth: 0.5,
-    borderTopColor: colors.borderResting,
-  },
-  item: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 11,
-    paddingHorizontal: spacing.lg,
-    gap: 12,
-  },
-  itemBorder: {
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.borderResting,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: colors.sand,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: colors.sage,
-    borderWidth: 0,
-  },
-  itemName: {
-    flex: 1,
-    fontFamily: fonts.bodyMedium,
-    fontSize: 14,
-    color: colors.espresso,
-  },
-  itemNameDone: {
-    color: colors.umber,
-    textDecorationLine: 'line-through',
-  },
-  itemQty: {
-    fontFamily: fonts.bodyRegular,
-    fontSize: 12,
-    color: colors.umber,
   },
 });
