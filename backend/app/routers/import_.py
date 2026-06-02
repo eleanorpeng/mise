@@ -332,11 +332,21 @@ async def import_from_url(
 
         # Persist the structure as "processing" and return it right away so the
         # client can render title/ingredients/steps. Techniques are added by a
-        # background pass; the recipe flips to "ready" when they land. Recipes
-        # default to the colored placeholder cover.
+        # background pass; the recipe flips to "ready" when they land.
         recipe = _persist_recipe(
             user_id, result.extraction, url, cover_url=None, status="processing",
         )
+
+        # Use the video's representative frame as the cover. The thumbnail lives
+        # in work_dir (cleaned up below), so upload it before returning. Falls
+        # back to the colored placeholder cover if extraction/upload failed.
+        if result.thumbnail_path:
+            cover_url = _upload_thumbnail(result.thumbnail_path, recipe["id"])
+            if cover_url:
+                supabase.table("recipes").update(
+                    {"cover_image_url": cover_url}
+                ).eq("id", recipe["id"]).execute()
+                recipe["coverImageUrl"] = cover_url
 
         background.add_task(_enrich_in_background, recipe["id"], url, result.extraction)
         _update_job_status(job_id, "done", recipe_id=recipe["id"])
