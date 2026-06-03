@@ -481,10 +481,6 @@ export default function CookAlongScreen() {
           <Text style={styles.hint}>Listening…</Text>
         ) : isProcessing ? (
           <Text style={styles.hint}>Thinking…</Text>
-        ) : lastTurn?.transcript ? (
-          <Text style={styles.transcript} numberOfLines={2}>
-            “{lastTurn.transcript}”
-          </Text>
         ) : (
           <Text style={styles.hint}>
             Tap the mic and say “next”, “back”, or ask a question.
