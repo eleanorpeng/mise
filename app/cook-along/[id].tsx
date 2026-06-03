@@ -329,16 +329,11 @@ export default function CookAlongScreen() {
         setTimerSeconds(result.timer_seconds);
       }
 
-      // 2. Then speak (non-blocking): a question answer gets the nicer server
-      //    voice; step/nav confirmations speak instantly on-device.
-      if (result.speech_audio_b64) {
-        playAudioB64(result.speech_audio_b64, result.speech_audio_mime || 'audio/mpeg');
-      } else if (result.speech) {
-        if (result.intent === 'answer' || result.intent === 'unknown') {
-          speakText(result.speech);
-        } else {
-          speakOnDevice(result.speech);
-        }
+      // 2. Then speak (non-blocking) — one consistent on-device voice for
+      //    everything (instant, offline; OpenRouter has no working TTS and the
+      //    OpenAI fallback would be a second, mismatched voice).
+      if (result.speech) {
+        speakOnDevice(result.speech);
       }
     } catch (err: any) {
       console.error('[cook-along]', err);

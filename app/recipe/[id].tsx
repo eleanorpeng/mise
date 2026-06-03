@@ -599,18 +599,6 @@ export default function RecipeDetailScreen() {
                   index={i + 1}
                   expanded={expandedTechnique === (step.id ?? String(i))}
                   onToggleTechnique={() => {
-                    LayoutAnimation.configureNext({
-                      duration: 220,
-                      create: {
-                        type: LayoutAnimation.Types.easeInEaseOut,
-                        property: LayoutAnimation.Properties.opacity,
-                      },
-                      update: { type: LayoutAnimation.Types.easeInEaseOut },
-                      delete: {
-                        type: LayoutAnimation.Types.easeInEaseOut,
-                        property: LayoutAnimation.Properties.opacity,
-                      },
-                    });
                     setExpandedTechnique(
                       expandedTechnique === (step.id ?? String(i))
                         ? null
