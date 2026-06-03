@@ -61,14 +61,12 @@ def _default_voice() -> tuple[str, str]:
 
 
 def resolve_voice(provider: str | None, voice: str | None) -> tuple[str, str]:
-    """Return (provider, voice) after validation, falling back to defaults."""
-    if provider == "voxtral" and voice and voice in VOXTRAL_VOICES:
-        if not settings.openrouter_api_key:
-            return "openai", OPENAI_DEFAULT_VOICE
-        return "voxtral", voice
+    """Return (provider, voice). Always OpenAI — Voxtral TTS is unavailable on
+    OpenRouter (the /audio/speech endpoint 404s), so a "voxtral" selection just
+    maps to the default OpenAI voice instead of wasting a failed round trip."""
     if voice and voice in OPENAI_VOICES:
         return "openai", voice
-    return _default_voice()
+    return "openai", OPENAI_DEFAULT_VOICE
 
 
 async def _synthesize_openai(text: str, voice: str) -> bytes:
@@ -207,15 +205,7 @@ async def synthesize_speech(
     voice: str | None = None,
     provider: str | None = None,
 ) -> bytes:
-    resolved_provider, resolved_voice = resolve_voice(provider, voice)
-    if resolved_provider == "voxtral":
-        try:
-            return await _synthesize_voxtral(text, resolved_voice)
-        except Exception as exc:
-            logger.warning(
-                "Voxtral TTS failed (%s); falling back to OpenAI Nova", exc
-            )
-            return await _synthesize_openai(text, OPENAI_DEFAULT_VOICE)
+    _resolved_provider, resolved_voice = resolve_voice(provider, voice)
     return await _synthesize_openai(text, resolved_voice)
 
 

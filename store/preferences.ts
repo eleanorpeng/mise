@@ -43,8 +43,8 @@ export interface AssistantVoice {
 }
 
 export const DEFAULT_ASSISTANT_VOICE: AssistantVoice = {
-  provider: 'voxtral',
-  voice: 'cheerful_female',
+  provider: 'openai',
+  voice: 'nova',
 };
 
 // Map a persisted value to a currently-supported voice, falling back to the
