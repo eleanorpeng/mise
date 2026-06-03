@@ -87,6 +87,14 @@ export default function CookAlongScreen() {
     }
   };
 
+  // The iOS audio session can EITHER record OR play — not both at once. TTS
+  // playback switches it to playback mode, so every recording must first switch
+  // it back to record mode. Forgetting this silently yields empty audio (the
+  // root cause of "didn't catch that"). This helper is the single owner of that
+  // transition.
+  const setSessionRecording = (recording: boolean) =>
+    setAudioModeAsync({ allowsRecording: recording, playsInSilentMode: true });
+
   const playAudioB64 = async (b64: string, mime: string = 'audio/mpeg') => {
     const turn = ++ttsCounterRef.current;
     const ext = mime.includes('mpeg') ? 'mp3' : 'wav';
@@ -95,9 +103,7 @@ export default function CookAlongScreen() {
       encoding: FileSystem.EncodingType.Base64,
     });
     if (turn !== ttsCounterRef.current) return;
-    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(
-      () => {},
-    );
+    await setSessionRecording(false).catch(() => {});
     stopSpeech();
     const player = createAudioPlayer({ uri: path });
     playerRef.current = player;
@@ -243,31 +249,38 @@ export default function CookAlongScreen() {
   };
 
   const startRecording = async () => {
+    // Guard: ignore taps while already listening or mid-turn.
+    if (isRecording || isProcessing) return;
     setVoiceError(null);
+    setLastTurn(null);
     hasSpokenRef.current = false;
     autoStoppingRef.current = false;
-    setLastTurn(null);
-    setIsRecording(true);
-    stopSpeech();
+    stopSpeech(); // barge-in: interrupt any TTS that's playing
+
     try {
-      // Prepare a fresh recording file every time. expo-audio requires a
-      // prepare before each record(); skipping it (or doing it fire-and-forget)
-      // yields an un-finalized m4a with no moov atom, which the backend can't
-      // decode.
+      // 1. Put the session in record mode (TTS left it in playback mode).
+      // 2. Prepare a fresh file — expo-audio needs a completed prepare before
+      //    each record(), or the m4a is never finalized (no moov atom).
+      await setSessionRecording(true);
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
     } catch (err: any) {
-      setIsRecording(false);
       setVoiceError(err?.message || 'Could not start recording.');
       return;
     }
+
+    // Only now is the mic truly live — set timestamps first, then flip the
+    // flag, so the silence-detector never runs against a stale start time
+    // (which would auto-stop instantly).
     const now = Date.now();
     recordStartedAtRef.current = now;
     lastSpeechAtRef.current = now;
+    setIsRecording(true);
   };
 
   const stopAndSend = async () => {
-    if (!recipe) return;
+    // Guard: the VAD auto-stop and a manual tap can both fire — only run once.
+    if (!recipe || isProcessing) return;
     setIsRecording(false);
     setIsProcessing(true);
     try {
@@ -314,6 +327,7 @@ export default function CookAlongScreen() {
       setVoiceError(err?.message || 'Voice request failed.');
     } finally {
       setIsProcessing(false);
+      autoStoppingRef.current = false;
     }
   };
 
