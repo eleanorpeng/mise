@@ -44,6 +44,10 @@ async def cook_along(
     except OpenAIError as exc:
         logger.warning("Voice turn failed: %s", exc)
         raise HTTPException(status_code=502, detail="Voice service temporarily unavailable")
+    except (RuntimeError, ValueError) as exc:
+        # e.g. an undecodable/truncated audio clip (ffmpeg can't read it).
+        logger.warning("Voice audio could not be processed: %s", exc)
+        raise HTTPException(status_code=422, detail="Couldn't read that audio. Please try again.")
 
     return result.model_dump()
 
