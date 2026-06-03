@@ -250,16 +250,16 @@ export default function CookAlongScreen() {
     setIsRecording(true);
     stopSpeech();
     try {
+      // Prepare a fresh recording file every time. expo-audio requires a
+      // prepare before each record(); skipping it (or doing it fire-and-forget)
+      // yields an un-finalized m4a with no moov atom, which the backend can't
+      // decode.
+      await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
     } catch (err: any) {
-      try {
-        await audioRecorder.prepareToRecordAsync();
-        audioRecorder.record();
-      } catch (err2: any) {
-        setIsRecording(false);
-        setVoiceError(err2?.message || err?.message || 'Could not start recording.');
-        return;
-      }
+      setIsRecording(false);
+      setVoiceError(err?.message || 'Could not start recording.');
+      return;
     }
     const now = Date.now();
     recordStartedAtRef.current = now;
@@ -275,6 +275,14 @@ export default function CookAlongScreen() {
       const uri = audioRecorder.uri;
       if (!uri) throw new Error('No audio recorded');
 
+      // Skip empty/truncated clips (e.g. an immediate silence auto-stop) so we
+      // don't ship an undecodable file to the backend.
+      const info = await FileSystem.getInfoAsync(uri);
+      if (!info.exists || (info.size ?? 0) < 2000) {
+        setVoiceError("Didn't catch that — tap and speak again.");
+        return;
+      }
+
       const result = await voiceService.cookAlong(
         recipe.id,
         currentStep,
@@ -283,8 +291,6 @@ export default function CookAlongScreen() {
         assistantVoice.provider,
       );
       setLastTurn(result);
-      // Re-prepare after the upload so the recorder doesn't truncate the file.
-      audioRecorder.prepareToRecordAsync().catch(() => {});
 
       if (result.speech_audio_b64) {
         await playAudioB64(
