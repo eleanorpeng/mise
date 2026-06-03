@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import re
@@ -379,13 +378,8 @@ async def process_voice_turn(
 
     fast = match_keyword_intent(transcript, recipe, current_step)
     if fast is not None:
-        if fast.speech:
-            try:
-                audio_bytes_out = await synthesize_speech(fast.speech, voice, provider)
-                fast.speech_audio_b64 = base64.b64encode(audio_bytes_out).decode("ascii")
-                fast.speech_audio_mime = "audio/mpeg"
-            except Exception as exc:
-                logger.warning("TTS synthesis failed (fast-path): %s", exc)
+        # Return text only — the client speaks nav confirmations on-device
+        # (instant) and fetches server TTS only for question answers.
         return fast
 
     steps = recipe.get("steps") or []
@@ -424,13 +418,5 @@ async def process_voice_turn(
 
     payload["transcript"] = transcript
     result = VoiceResponse.model_validate(payload)
-
-    if result.speech:
-        try:
-            audio_bytes = await synthesize_speech(result.speech, voice, provider)
-            result.speech_audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
-            result.speech_audio_mime = "audio/mpeg"
-        except Exception as exc:
-            logger.warning("TTS synthesis failed: %s", exc)
-
+    # No server TTS in the turn — the client fetches /voice/tts for answers.
     return result

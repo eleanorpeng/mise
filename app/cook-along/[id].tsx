@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Speech from 'expo-speech';
 import {
   AudioModule,
   createAudioPlayer,
@@ -85,7 +86,27 @@ export default function CookAlongScreen() {
       } catch {}
       playerRef.current = null;
     }
+    Speech.stop(); // also halt any on-device speech
   };
+
+  // On-device TTS (instant, offline) for step readouts and nav confirmations.
+  // Server TTS (speakText) is reserved for question answers, where the nicer
+  // voice is worth the round trip.
+  const speakOnDevice = async (text: string) => {
+    if (!text) return;
+    ttsCounterRef.current++; // invalidate any in-flight server TTS
+    stopSpeech();
+    await setSessionRecording(false).catch(() => {}); // route to the speaker
+    Speech.speak(text, { rate: 1.0 });
+  };
+
+  // The iOS audio session can EITHER record OR play — not both at once. TTS
+  // playback switches it to playback mode, so every recording must first switch
+  // it back to record mode. Forgetting this silently yields empty audio (the
+  // root cause of "didn't catch that"). This helper is the single owner of that
+  // transition.
+  const setSessionRecording = (recording: boolean) =>
+    setAudioModeAsync({ allowsRecording: recording, playsInSilentMode: true });
 
   const playAudioB64 = async (b64: string, mime: string = 'audio/mpeg') => {
     const turn = ++ttsCounterRef.current;
@@ -95,9 +116,7 @@ export default function CookAlongScreen() {
       encoding: FileSystem.EncodingType.Base64,
     });
     if (turn !== ttsCounterRef.current) return;
-    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(
-      () => {},
-    );
+    await setSessionRecording(false).catch(() => {});
     stopSpeech();
     const player = createAudioPlayer({ uri: path });
     playerRef.current = player;
@@ -191,7 +210,7 @@ export default function CookAlongScreen() {
     if (recipe.steps.length === 0) return;
     autoStartedRef.current = true;
     const intro = `Let's cook ${recipe.title}. Step 1. ${recipe.steps[0].instruction}`;
-    speakText(intro);
+    speakOnDevice(intro);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipe]);
 
@@ -218,7 +237,7 @@ export default function CookAlongScreen() {
       setTimerSeconds((s) => {
         if (s == null) return null;
         if (s <= 1) {
-          speakText('Timer done.');
+          speakOnDevice('Timer done.');
           return null;
         }
         return s - 1;
@@ -232,7 +251,7 @@ export default function CookAlongScreen() {
     if (!recipe) return;
     const step = recipe.steps[index];
     if (!step) return;
-    speakText(`Step ${index + 1}. ${step.instruction}`);
+    speakOnDevice(`Step ${index + 1}. ${step.instruction}`);
   };
 
   const goToStep = (index: number) => {
@@ -243,31 +262,38 @@ export default function CookAlongScreen() {
   };
 
   const startRecording = async () => {
+    // Guard: ignore taps while already listening or mid-turn.
+    if (isRecording || isProcessing) return;
     setVoiceError(null);
+    setLastTurn(null);
     hasSpokenRef.current = false;
     autoStoppingRef.current = false;
-    setLastTurn(null);
-    setIsRecording(true);
-    stopSpeech();
+    stopSpeech(); // barge-in: interrupt any TTS that's playing
+
     try {
-      // Prepare a fresh recording file every time. expo-audio requires a
-      // prepare before each record(); skipping it (or doing it fire-and-forget)
-      // yields an un-finalized m4a with no moov atom, which the backend can't
-      // decode.
+      // 1. Put the session in record mode (TTS left it in playback mode).
+      // 2. Prepare a fresh file — expo-audio needs a completed prepare before
+      //    each record(), or the m4a is never finalized (no moov atom).
+      await setSessionRecording(true);
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
     } catch (err: any) {
-      setIsRecording(false);
       setVoiceError(err?.message || 'Could not start recording.');
       return;
     }
+
+    // Only now is the mic truly live — set timestamps first, then flip the
+    // flag, so the silence-detector never runs against a stale start time
+    // (which would auto-stop instantly).
     const now = Date.now();
     recordStartedAtRef.current = now;
     lastSpeechAtRef.current = now;
+    setIsRecording(true);
   };
 
   const stopAndSend = async () => {
-    if (!recipe) return;
+    // Guard: the VAD auto-stop and a manual tap can both fire — only run once.
+    if (!recipe || isProcessing) return;
     setIsRecording(false);
     setIsProcessing(true);
     try {
@@ -292,15 +318,8 @@ export default function CookAlongScreen() {
       );
       setLastTurn(result);
 
-      if (result.speech_audio_b64) {
-        await playAudioB64(
-          result.speech_audio_b64,
-          result.speech_audio_mime || 'audio/mpeg',
-        );
-      } else if (result.speech) {
-        speakText(result.speech);
-      }
-
+      // 1. Apply the navigation/timer change FIRST — instant, doesn't wait on
+      //    any speech synthesis.
       if (result.intent === 'next' || result.intent === 'back') {
         const delta = result.step_delta ?? (result.intent === 'next' ? 1 : -1);
         setCurrentStep((s) => clamp(s + delta, 0, recipe.steps.length - 1));
@@ -309,11 +328,24 @@ export default function CookAlongScreen() {
       } else if (result.intent === 'timer' && result.timer_seconds != null) {
         setTimerSeconds(result.timer_seconds);
       }
+
+      // 2. Then speak (non-blocking): a question answer gets the nicer server
+      //    voice; step/nav confirmations speak instantly on-device.
+      if (result.speech_audio_b64) {
+        playAudioB64(result.speech_audio_b64, result.speech_audio_mime || 'audio/mpeg');
+      } else if (result.speech) {
+        if (result.intent === 'answer' || result.intent === 'unknown') {
+          speakText(result.speech);
+        } else {
+          speakOnDevice(result.speech);
+        }
+      }
     } catch (err: any) {
       console.error('[cook-along]', err);
       setVoiceError(err?.message || 'Voice request failed.');
     } finally {
       setIsProcessing(false);
+      autoStoppingRef.current = false;
     }
   };
 
