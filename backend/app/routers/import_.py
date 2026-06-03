@@ -3,7 +3,6 @@ import shutil
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -84,10 +83,6 @@ def _persist_recipe(
 
     Persistence is batched — at most 5 round trips to Supabase regardless of
     how many ingredients/steps/techniques the recipe has.
-
-    ``status`` is "ready" by default. Progressive video imports persist the
-    structure as "processing" first, then flip to "ready" once techniques are
-    attached in the background (see :func:`_attach_techniques`).
     """
 
     # 1. Insert the recipe row.
@@ -231,74 +226,12 @@ def _assemble_in_memory(
     return recipe
 
 
-def _attach_techniques(recipe_id: str, extraction: RecipeExtraction) -> None:
-    """Upsert techniques from an enriched extraction and link them to the
-    already-persisted steps (matched by order_index), then flip the recipe to
-    "ready".
-
-    Runs in a background task after the structure has been returned to the
-    client. Always sets status to "ready" in the end — even if technique
-    attachment fails — so a recipe is never stranded in "processing".
-    """
-    try:
-        unique: dict[str, ExtractedTechnique] = {}
-        for step in extraction.steps:
-            if step.technique:
-                unique[step.technique.name] = step.technique
-
-        technique_id_by_name: dict[str, str] = {}
-        if unique:
-            tech_payload = [
-                {"name": t.name, "explanation": t.explanation, "category": t.category}
-                for t in unique.values()
-            ]
-            tech_res = (
-                supabase.table("techniques")
-                .upsert(tech_payload, on_conflict="name")
-                .execute()
-            )
-            technique_id_by_name = {t["name"]: t["id"] for t in (tech_res.data or [])}
-
-        # Link each annotated step by its order_index (which equals the step's
-        # position in the extraction — see _persist_recipe step insert).
-        for i, step in enumerate(extraction.steps):
-            if not step.technique:
-                continue
-            tech_id = technique_id_by_name.get(step.technique.name)
-            if not tech_id:
-                continue
-            (
-                supabase.table("steps")
-                .update({"technique_id": tech_id})
-                .eq("recipe_id", recipe_id)
-                .eq("order_index", i)
-                .execute()
-            )
-    except Exception:
-        logger.warning("Technique attachment failed for %s", recipe_id, exc_info=True)
-    finally:
-        supabase.table("recipes").update({"status": "ready"}).eq("id", recipe_id).execute()
-
-
-async def _enrich_in_background(recipe_id: str, url: str, extraction: RecipeExtraction) -> None:
-    """Background job: run the smart technique pass, cache the enriched result
-    for future imports of this URL, and attach techniques to the persisted recipe."""
-    try:
-        enriched = await enrich_techniques(extraction)
-        cache_extraction(url, enriched)
-        _attach_techniques(recipe_id, enriched)
-    except Exception:
-        logger.exception("Background enrichment failed for %s", recipe_id)
-        # Ensure the recipe is not stuck in "processing".
-        supabase.table("recipes").update({"status": "ready"}).eq("id", recipe_id).execute()
-
 
 @router.post("/url", status_code=201)
 @limiter.limit("10/minute")
 async def import_from_url(
     request: Request,
     body: UrlImportRequest,
-    background: BackgroundTasks,
     user_id: str = Depends(get_current_user),
 ):
     url = body.url.strip()
@@ -330,12 +263,14 @@ async def import_from_url(
 
         _update_job_status(job_id, "synthesising")
 
-        # Persist the structure as "processing" and return it right away so the
-        # client can render title/ingredients/steps. Techniques are added by a
-        # background pass; the recipe flips to "ready" when they land.
-        recipe = _persist_recipe(
-            user_id, result.extraction, url, cover_url=None, status="processing",
-        )
+        # Enrich techniques synchronously — a background task was unreliable on
+        # the platform (best-effort, often dropped), leaving recipes with no
+        # techniques. The pass is quick and the request stays well under the
+        # gateway timeout, so just await it and persist a complete recipe.
+        extraction = await enrich_techniques(result.extraction)
+        cache_extraction(url, extraction)
+
+        recipe = _persist_recipe(user_id, extraction, url, cover_url=None)
 
         # Use the video's representative frame as the cover. The thumbnail lives
         # in work_dir (cleaned up below), so upload it before returning. Falls
@@ -348,7 +283,6 @@ async def import_from_url(
                 ).eq("id", recipe["id"]).execute()
                 recipe["coverImageUrl"] = cover_url
 
-        background.add_task(_enrich_in_background, recipe["id"], url, result.extraction)
         _update_job_status(job_id, "done", recipe_id=recipe["id"])
         return recipe
 
