@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import FastAPI
@@ -37,6 +38,16 @@ app.include_router(cook_log.router, prefix="/cook-log", tags=["cook-log"])
 app.include_router(profile.router, prefix="/profile", tags=["profile"])
 app.include_router(recap.router, prefix="/recap", tags=["recap"])
 app.include_router(chef.router, prefix="/chef", tags=["chef"])
+
+
+@app.on_event("startup")
+async def _warm_models() -> None:
+    # Pre-load the rembg sticker model in a background thread so the first
+    # cook-log doesn't eat the model download + ONNX init, without blocking the
+    # app from becoming healthy.
+    from app.services.sticker import warm
+
+    asyncio.create_task(asyncio.to_thread(warm))
 
 
 @app.get("/health")

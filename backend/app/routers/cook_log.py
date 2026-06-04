@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import date, datetime
@@ -113,8 +114,11 @@ async def create_cook_log(
             raise HTTPException(404, "Recipe not found")
 
     try:
-        original_jpeg = normalize_original(raw)
-        sticker_png = cut_out(original_jpeg)
+        # Offload the CPU-bound image work (Pillow + the rembg/ONNX cutout) to a
+        # thread so it doesn't block the event loop and stall other requests
+        # (e.g. a concurrent recipe import) on this worker.
+        original_jpeg = await asyncio.to_thread(normalize_original, raw)
+        sticker_png = await asyncio.to_thread(cut_out, original_jpeg)
     except StickerError as exc:
         logger.warning("Sticker pipeline failed for user %s: %s", user_id, exc)
         raise HTTPException(422, str(exc)) from exc
