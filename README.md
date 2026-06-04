@@ -58,21 +58,18 @@ The backend's main job is **orchestration**: it routes each task to whichever pr
 
 1. **Ingestion** — `yt-dlp` downloads from TikTok, Reels, or YouTube Shorts behind one interface, with a duration cap.
 2. **Media extraction** — `ffmpeg` runs two concurrent branches: audio (mono 16 kHz) and keyframes. Keyframes use **scene-change detection** (keep only meaningful transitions, fall back to even sampling on low-motion clips) and are downscaled + sent at low detail — both choices cut vision-token cost. The same pass picks a cover image.
-3. **Transcription** — audio is sent inline as base64 to **Gemini 2.5 Flash** via OpenRouter (OpenRouter has no Whisper-style upload endpoint, so we use the chat-audio API; Whisper is the fallback).
-4. **Synthesis — the key decision** — instead of one slow model doing everything, the work is **split between two specialists**: a *fast* vision model (**Gemini 2.5 Flash**) extracts the structure — title, ingredients, quantities, steps, macros — and a *smarter* model (**Gemini 2.5 Pro**), running **text-only with no images**, writes the technique annotations. Decoupling them is both faster (the smart model never processes images and runs only on step text) and higher-quality (it spends all its attention on the culinary reasoning that's the differentiator). Responses are parsed defensively against markdown/prose wrapping.
-5. **Persistence + caching** — written to Postgres in a handful of batched queries; techniques are de-duplicated and shared across recipes. The finished extraction is cached by URL so re-imports return instantly.
+3. **Transcription** — audio is sent inline as base64 to **Gemini 2.5 Flash** via OpenRouter.
+4. **Synthesis** — instead of one slow model doing everything, the work is **split between two specialists**: a *fast* vision model (**Gemini 2.5 Flash**) extracts the structure–title, ingredients, quantities, steps, macros–and a *smarter* model (**Gemini 2.5 Pro**), running **text-only with no images**, writes the technique annotations. We then combined the result and return a full, structured recipe.
 
-**Photo import** reuses the back half: **Gemini 2.5 Pro** identifies the dish from a single photo (plus an optional hint) and reconstructs a home-cooking recipe, which flows into the same technique + persistence path. Video and photo are two front doors into one pipeline.
+**Photo import** reuses the back half: **Gemini 2.5 Pro** identifies the dish from a single photo (plus an optional hint) and reconstructs a home-cooking recipe, which flows into the same technique + persistence path.
 
 ### Cook-along
 
 <img width="1923" height="1077" alt="Screenshot 2026-06-04 at 2 26 47 PM" src="https://github.com/user-attachments/assets/5c25593d-65e6-4aef-9888-85591c495c16" />
 
-A hands-free **perceive → reason → act** loop:
-
 - **Perceive** — `expo-audio` records on-device with voice-activity detection (auto-stops on silence); the clip is uploaded and transcribed on the backend (Gemini 2.5 Flash, the same transcription path as the import pipeline).
 - **Reason** — a **keyword fast-path** resolves "next / back / repeat" instantly with *no model call*; open-ended questions fall through to **Llama 3.3 70B** (DigitalOcean inference), which returns a structured intent.
-- **Act** — a small tool set (`next · back · goto · timer · answer`) executes, and the response is spoken with **OpenAI TTS**. Navigation is decoupled from speech, so the step moves the instant the agent understands you.
+- **Act** — a small tool set (`next · back · goto · timer · answer`) executes, and the response is spoken with **OpenAI TTS**.
 
 ### Models & providers
 
