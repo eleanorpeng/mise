@@ -69,6 +69,13 @@ export default function HomeScreen() {
     return mask;
   }, [weekPlan]);
 
+  const mealsPlanned = useMemo(() => {
+    if (!weekPlan) return 0;
+    return weekPlan.entries.filter(
+      (e) => dayIndex(weekPlan.weekStart, e.plannedDate) >= 0,
+    ).length;
+  }, [weekPlan]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
@@ -86,7 +93,7 @@ export default function HomeScreen() {
           <Text style={styles.greetingTitle}>{title}</Text>
         </View>
 
-        <WeekCard plannedDays={plannedDays} />
+        <WeekCard plannedDays={plannedDays} mealsPlanned={mealsPlanned} />
         <ImportBar />
         <CookLogPeek />
         <GroceryPeek />
