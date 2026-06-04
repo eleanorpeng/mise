@@ -120,18 +120,20 @@ Push-to-ship: every commit to `main` triggers **DigitalOcean App Platform** to r
 We validated the build through testing, empirical provider comparisons, instrumentation, and iterative failure analysis.
 
 ### Automated tests
-**66 backend unit tests** across the pipeline's pure logic, runnable without cloud credentials, plus a TypeScript typecheck gate on every change:
+**110 tests** (66 backend + 44 frontend) covering the pipeline's pure logic, runnable without cloud credentials, plus a TypeScript typecheck gate on every change. They live in [`backend/tests/`](backend/tests):
 
 | Suite | Tests | Covers |
 |---|---|---|
-| `test_cache` | 11 | TTL cache expiry, eviction, key derivation |
-| `test_technique_merge` | 10 | Merging LLM technique output onto steps (bad indices, missing fields, dupes, junk) |
-| `test_json_parse` | 9 | Tolerant JSON parsing (markdown fences, prose, salvage) |
-| `test_keyframes` | 5 | Scene-change extraction + even-sampling fallback (synthetic ffmpeg clips) |
-| `test_create_recipe` | 31 | Recipe payload building + step/ingredient filtering |
+| `test_cache.py` | 11 | TTL cache expiry, eviction, key derivation |
+| `test_technique_merge.py` | 10 | Merging LLM technique output onto steps (bad indices, missing fields, dupes, junk) |
+| `test_json_parse.py` | 9 | Tolerant JSON parsing (markdown fences, prose, salvage) |
+| `test_keyframes.py` | 5 | Scene-change extraction + even-sampling fallback (synthetic ffmpeg clips) |
+| `test_create_recipe.py` | 31 | Recipe payload building + step/ingredient filtering |
+| `payload.test.mjs` | 44 | Recipe-save payload construction (frontend logic) |
 
 ```bash
-for t in cache technique_merge json_parse keyframes create_recipe; do python3 .pipeline/tests/test_$t.py; done
+for t in cache technique_merge json_parse keyframes create_recipe; do python3 backend/tests/test_$t.py; done
+node backend/tests/payload.test.mjs
 npm run typecheck
 ```
 
@@ -251,7 +253,7 @@ constants/       # colors, typography, spacing — single source of truth
 hooks/  lib/  services/  store/  types/   # fonts/voice · supabase · API clients · Zustand · TS types
 backend/app/     # FastAPI — routers/ (import, recipes, planner, voice, chef, recap), services/, llm.py
 backend/Dockerfile  backend/*.sql           # App Platform build · Supabase migrations
-.pipeline/tests/ # backend unit tests (run with python3)
+backend/tests/   # unit tests — python3 backend/tests/test_*.py
 ```
 
 See `CLAUDE.md` for the full feature spec and `DESIGN_SYSTEM.md` for the visual system.
