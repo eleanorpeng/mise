@@ -29,6 +29,9 @@ backend/.pytest_cache/
 .claude/
 .pipeline/
 
+# Presentation deck + script (local deliverables, not part of the app)
+presentation/
+
 # Project docs (kept local only)
 CLAUDE.md
 DESIGN_SYSTEM.md
