@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { WeekPlan, PlannedMeal, GroceryItem } from '@/types';
 import {
   plannerService,
@@ -7,8 +6,6 @@ import {
   type GroceryItemCreate,
   type GroceryItemUpdate,
 } from '@/services/planner';
-
-const LAST_WEEK_KEY = 'plan:lastViewedWeek';
 
 interface PlanStore {
   // viewWeekStart is what the planner page is currently focused on (Monday ISO).
@@ -68,18 +65,16 @@ export const usePlanStore = create<PlanStore>((set, get) => ({
   hydrated: false,
 
   hydrate: async () => {
-    try {
-      const stored = await AsyncStorage.getItem(LAST_WEEK_KEY);
-      if (stored) {
-        set({ viewWeekStart: stored });
-      }
-    } catch {}
-    set({ hydrated: true });
+    // Always open the planner on the CURRENT week. We intentionally do not
+    // restore the last-viewed week: restoring a past week asynchronously after
+    // mount switched the grocery view to a different week ~1s after open, which
+    // made freshly-added items appear to vanish (they were saved under the
+    // current week, but the view had jumped to the stale one).
+    set({ viewWeekStart: getMondayIso(), hydrated: true });
   },
 
   setViewWeek: (weekStart) => {
     set({ viewWeekStart: weekStart });
-    AsyncStorage.setItem(LAST_WEEK_KEY, weekStart).catch(() => {});
   },
 
   fetchWeek: async (weekStart) => {
