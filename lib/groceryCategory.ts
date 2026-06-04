@@ -54,6 +54,12 @@ const KEYWORDS: Array<[GroceryCategory, RegExp]> = [
     'frozen',
     /\b(frozen|ice cream|sorbet|gelato|popsicle|frozen peas|frozen corn)\b/i,
   ],
+  // Cooking wines are pantry staples, not beverages — match before `drinks`
+  // so "Shaoxing wine", "rice wine", "mirin", etc. don't fall under Drinks.
+  [
+    'pantry',
+    /\b(shaoxing|shao xing|mirin|sake|rice wine|cooking wine|cooking sherry|cooking sake|huangjiu|michiu)\b/i,
+  ],
   [
     'drinks',
     /\b(beer|wine|juice|soda|coffee|tea|sparkling water|kombucha|cocktail|cider|espresso|champagne)\b/i,
