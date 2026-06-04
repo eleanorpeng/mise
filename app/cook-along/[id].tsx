@@ -87,14 +87,6 @@ export default function CookAlongScreen() {
     }
   };
 
-  // The iOS audio session can EITHER record OR play — not both at once. TTS
-  // playback switches it to playback mode, so every recording must first switch
-  // it back to record mode. Forgetting this silently yields empty audio (the
-  // root cause of "didn't catch that"). This helper is the single owner of that
-  // transition.
-  const setSessionRecording = (recording: boolean) =>
-    setAudioModeAsync({ allowsRecording: recording, playsInSilentMode: true });
-
   const playAudioB64 = async (b64: string, mime: string = 'audio/mpeg') => {
     const turn = ++ttsCounterRef.current;
     const ext = mime.includes('mpeg') ? 'mp3' : 'wav';
@@ -103,7 +95,10 @@ export default function CookAlongScreen() {
       encoding: FileSystem.EncodingType.Base64,
     });
     if (turn !== ttsCounterRef.current) return;
-    await setSessionRecording(false).catch(() => {});
+    // The session stays in record-capable mode the whole session (see the
+    // pre-warm effect) — we don't flip it for playback, because flipping back
+    // to record raced with record() and captured silence. TTS plays fine in
+    // record mode.
     stopSpeech();
     const player = createAudioPlayer({ uri: path });
     playerRef.current = player;
@@ -201,12 +196,15 @@ export default function CookAlongScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipe]);
 
-  // Pre-warm the audio session + recorder so the first tap is instant.
+  // Put the audio session in record-capable mode ONCE for the whole screen and
+  // keep it there. We deliberately never flip to a playback-only mode: flipping
+  // back to record raced with record() and produced silent captures. TTS plays
+  // fine in this mode. Pre-warming also makes the first mic tap instant.
   useEffect(() => {
     (async () => {
       try {
-        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
         await AudioModule.requestRecordingPermissionsAsync();
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
         await audioRecorder.prepareToRecordAsync();
       } catch {}
     })();
@@ -258,10 +256,9 @@ export default function CookAlongScreen() {
     stopSpeech(); // barge-in: interrupt any TTS that's playing
 
     try {
-      // 1. Put the session in record mode (TTS left it in playback mode).
-      // 2. Prepare a fresh file — expo-audio needs a completed prepare before
-      //    each record(), or the m4a is never finalized (no moov atom).
-      await setSessionRecording(true);
+      // The session is already record-capable (set once on mount). Just
+      // prepare a fresh file — expo-audio needs a completed prepare before each
+      // record(), or the m4a is never finalized (no moov atom) — then record.
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
     } catch (err: any) {
