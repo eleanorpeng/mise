@@ -33,6 +33,16 @@ def _session() -> "BaseSession":
     return new_session(model_name="u2netp")
 
 
+def warm() -> None:
+    """Pre-load the rembg model so the first cook-log sticker isn't slowed by a
+    model download + ONNX session init. Safe to call on startup (in a thread)."""
+    try:
+        _session()
+        logger.info("rembg session warmed")
+    except Exception:  # noqa: BLE001
+        logger.warning("rembg warm-up failed (will lazy-load on first use)", exc_info=True)
+
+
 def normalize_original(image_bytes: bytes) -> bytes:
     """Return JPEG bytes scaled to <= _MAX_DIMENSION on the long edge.
 
