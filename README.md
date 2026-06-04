@@ -1,8 +1,8 @@
 # Mise 🍳
 
-**Your AI cooking companion — capture, cook, and log.**
+**Your cooking companion — save it, cook it, log it.**
 
-Mise turns the cooking videos and restaurant photos you'd never get around to making into structured, *cookable* recipes — then teaches you the technique behind each step, plans your week, and guides you hands-free at the stove.
+Mise turns the cooking videos and restaurant photos you'd never get around to making into structured recipes.
 
 > React Native (Expo) · FastAPI · Postgres (Supabase) · Gemini 2.5 · Llama 3.3 · OpenAI
 
@@ -12,6 +12,7 @@ Mise turns the cooking videos and restaurant photos you'd never get around to ma
 - [The problem & the insight](#the-problem--the-insight)
 - [What Mise does](#what-mise-does)
 - [How it works](#how-it-works)
+- [Use cases & impact](#use-cases--impact)
 - [Evaluation & evidence](#evaluation--evidence)
 - [Limitations & roadmap](#limitations--roadmap)
 - [AI usage, credits & disclosure](#ai-usage-credits--disclosure)
@@ -23,62 +24,37 @@ Mise turns the cooking videos and restaurant photos you'd never get around to ma
 
 ## The problem & the insight
 
-Cooking content has moved almost entirely to short-form video — but **video is a terrible format to actually cook from.** Open your "saved" folder on TikTok or Instagram and you'll find dozens of recipes you swore you'd make. Most people cook almost none of them. We call it the **recipe graveyard.**
+Cooking content has moved almost entirely to short-form video, but **video is a terrible format to actually cook from.** The recipes are everywhere across social media, and it's difficult to view all the steps and ingredients at once. Once you starts cookign, you have to go back and forth to view the steps in the videos.
 
-Two bottlenecks create it:
-
-1. **An execution gap.** You can't scan ingredients or quantities at a glance, amounts flash by in half a second, you're scrubbing back and forth with greasy hands, and there's no structure to jump around.
-2. **A learning gap.** Videos show you *what* to do but never *why*. You watch someone sear a fish, but never learn it's the Maillard reaction, or why a gentle steam keeps it tender.
-
-**The insight:** AI can close both at once — by *restructuring* video into something ordered and cookable, and by *enriching* each step with the technique behind it. The name comes from *mise en place*, the chef's principle of getting everything in its place before you cook. That's exactly what the app does.
+That's why I built Mise.
 
 ---
 
 ## What Mise does
 
+*Your cooking companion — save, cook, log.*
+
 | Feature | What it is |
 |---|---|
-| 📥 **Import** | Paste a TikTok/Reels link **or** a photo of a dish → a structured recipe in seconds |
-| ⭐ **Technique annotations** | An expandable chip on each step explaining the cooking *science* — the differentiator |
-| 🗓 **Planner + macros** | Weekly meal planner with per-meal and weekly nutrition |
-| 🛒 **Smart grocery** | Aggregated, auto-categorized shopping list |
-| 🎙 **Voice cook-along** | Hands-free, step-by-step voice assistant at the stove |
-| 📔 **Cook log + recap** | A sticker-based cook log and a shareable monthly recap so you remember what you've made |
-| 👩‍🍳 **Chef chatbot** | Turn the ingredients you have on hand into a recipe |
+| 📥 **Import** | TikTok/Reel link or photo → a structured recipe |
+| ⭐ **Technique Pills** | Shows the cooking science behind each step — the differentiator |
+| 🗓 **Planner + macros** | Plan your meals and see macros for each meal (with an aggregated grocery list) |
+| 👩‍🍳 **AI Chef** | Chat with the AI to generate recipes from the ingredients you have left |
+| 🎙 **Cook-along** | Hands-free mode — ask questions at each step |
+| 📔 **Cook Log** | See a recap of the meals you've cooked |
 
 ---
 
 ## How it works
 
 ### Architecture
+<img width="1923" height="1077" alt="Screenshot 2026-06-04 at 2 26 33 PM" src="https://github.com/user-attachments/assets/5bd7d189-2310-4d1c-b71f-7b42ef8e8317" />
 
-```
-┌──────────────────────────────────────────────┐
-│  React Native app (Expo)                       │  import · recipe · planner · cook-along
-└──────────────────────────────────────────────┘
-                     │  HTTPS / REST
-┌──────────────────────────────────────────────┐
-│  FastAPI backend  (Docker on DigitalOcean)     │  pipeline orchestration · auth · thin routers
-└──────────────────────────────────────────────┘
-        │              │                  │
-   Supabase        AI router        ┌─────┴───────────────┐
-  Postgres·Auth    (per task) ──▶   OpenRouter · DigitalOcean · OpenAI
-   ·Storage
-```
 
 The backend's main job is **orchestration**: it routes each task to whichever provider fits it best, and the routers stay thin while the services hold the logic.
 
-### The import pipeline (the core engineering)
-
-```
-paste link → yt-dlp download ─┬─ ffmpeg: audio → transcribe ─┐
-                              └─ ffmpeg: keyframes ────────────┤   (scene-change pruning)
-                                                               ▼
-                          ┌─ Gemini 2.5 Flash (vision)  → structure ─┐   run in parallel
-                          └─ Gemini 2.5 Pro (text-only) → techniques ┘
-                                                               ▼
-                              structured recipe → Postgres → progressive render
-```
+### The video ingestion pipeline
+<img width="1923" height="1077" alt="Screenshot 2026-06-04 at 2 26 43 PM" src="https://github.com/user-attachments/assets/3ab73317-8978-452c-ae52-469180339c2e" />
 
 1. **Ingestion** — `yt-dlp` downloads from TikTok, Reels, or YouTube Shorts behind one interface, with a duration cap.
 2. **Media extraction** — `ffmpeg` runs two concurrent branches: audio (mono 16 kHz) and keyframes. Keyframes use **scene-change detection** (keep only meaningful transitions, fall back to even sampling on low-motion clips) and are downscaled + sent at low detail — both choices cut vision-token cost. The same pass picks a cover image.
@@ -88,34 +64,15 @@ paste link → yt-dlp download ─┬─ ffmpeg: audio → transcribe ─┐
 
 **Photo import** reuses the back half: **Gemini 2.5 Pro** identifies the dish from a single photo (plus an optional hint) and reconstructs a home-cooking recipe, which flows into the same technique + persistence path. Video and photo are two front doors into one pipeline.
 
-### Cook-along — a voice agent
+### Cook-along
+
+<img width="1923" height="1077" alt="Screenshot 2026-06-04 at 2 26 47 PM" src="https://github.com/user-attachments/assets/5c25593d-65e6-4aef-9888-85591c495c16" />
 
 A hands-free **perceive → reason → act** loop:
 
 - **Perceive** — `expo-audio` records on-device with voice-activity detection (auto-stops on silence); the clip is uploaded and transcribed on the backend (Gemini 2.5 Flash, the same transcription path as the import pipeline).
 - **Reason** — a **keyword fast-path** resolves "next / back / repeat" instantly with *no model call*; open-ended questions fall through to **Llama 3.3 70B** (DigitalOcean inference), which returns a structured intent.
 - **Act** — a small tool set (`next · back · goto · timer · answer`) executes, and the response is spoken with **OpenAI TTS**. Navigation is decoupled from speech, so the step moves the instant the agent understands you.
-
-### Chef chatbot — a conversational, personalized pipeline
-
-The Chef turns the ingredients you have on hand into a recipe through a short conversation. It runs on **Llama 3.3 70B** (DigitalOcean inference) and is structured as a two-phase, memory-aware loop:
-
-```
-your message ──▶ system prompt + your profile (diet · cuisine · skill)
-                           │
-            Llama 3.3 70B  ▼  → one structured JSON object
-        ┌──────────────────┴───────────────────┐
-   clarify phase                          propose phase
- (needs_more_info)                     (needs_more_info=false)
- ask ONE question +                   full recipe (RecipeExtraction)
- quick-reply chips                    → reused _persist_recipe()
-                           │
-                  may emit "learned" → saved to your profile (durable memory)
-```
-
-- **Structured output, streamed UX.** The model is asked for a *single JSON object* (`reply`, `needs_more_info`, `recipe`, `suggestions`, `learned`). To still feel live, the streaming endpoint (`POST /chef/chat/stream`, Server-Sent Events) **peels the `reply` field's text off the token stream as it arrives** with a small JSON-aware state machine — so the conversational message lands word-by-word while the structured fields are parsed once at the end. A non-streaming `POST /chef/chat` exists as a fallback.
-- **Two phases.** In *clarify* it asks one question at a time and offers tappable suggestion chips; in *propose* it returns a complete recipe in the **same `RecipeExtraction` schema as the import pipeline**, persisted via the same `_persist_recipe()` path — so Chef recipes are first-class.
-- **Memory & personalization.** Your profile (dietary restrictions, cuisine preferences, skill level) is injected into the prompt, and when you state a *durable* preference mid-chat ("I'm vegetarian"), the model emits a `learned` field that's written back to your profile — so the Chef remembers across sessions. Conversations are persisted to Supabase with a History sheet.
 
 ### Models & providers
 
@@ -132,13 +89,24 @@ Provider routing lives in `backend/app/llm.py` and is configurable via env vars 
 
 ### Deployment
 
-Push-to-ship: every commit to `main` triggers **DigitalOcean App Platform** to rebuild the Docker image (which bakes in `ffmpeg` and `yt-dlp`) and redeploy. Supabase provides managed Postgres, auth, and storage; provider keys are injected as encrypted secrets. No manual ops.
+Every commit to `main` triggers **DigitalOcean App Platform** to rebuild the Docker image (which bakes in `ffmpeg` and `yt-dlp`) and redeploy. Supabase provides managed Postgres, auth, and storage; provider keys are injected as encrypted secrets. No manual ops.
+
+---
+
+## Use cases & impact
+
+For anyone who's interested in cooking:
+
+- **Keep track of all your recipes in one place** — no more losing them across social media.
+- **Learn *why* certain techniques matter** — the technique pills build real culinary skill and knowledge, not just step-following.
+- **Plan and log your meals** — a weekly planner with macros, plus a cook log of what you've actually made.
+- **See a recap of the meals you've cooked** — and share it with friends.
 
 ---
 
 ## Evaluation & evidence
 
-We validated the build through testing, empirical provider comparisons, instrumentation, and iterative failure analysis.
+We validated the build through testing, instrumentation, and iterative failure analysis.
 
 ### Automated tests
 **110 tests** (66 backend + 44 frontend) covering the pipeline's pure logic, runnable without cloud credentials, plus a TypeScript typecheck gate on every change. They live in [`backend/tests/`](backend/tests):
@@ -162,7 +130,7 @@ npm run typecheck
 The import pipeline logs **per-stage latency** (download / media+transcribe / synthesis / total) so regressions are visible in production logs, and import jobs are tracked in a DB table with status transitions.
 
 ### Iteration & failure analysis
-The commit history documents debugging real production failures end-to-end — evidence of meaningful iteration: missing `ffmpeg` on deploy (buildpack → Dockerfile), truncated audio (`moov atom not found`) traced to the recording lifecycle, an iOS audio-session record/playback race, a foreign-key cascade on recipe delete, and a TTS race causing the mic to fail on the first tap. Each was root-caused and fixed.
+The commit history documents debugging real production failures end-to-end. Examples include truncated audio, recording lifecycle, TTS race conditions.
 
 ---
 
@@ -176,17 +144,16 @@ The commit history documents debugging real production failures end-to-end — e
 - **No automated accuracy benchmark yet** — extraction quality is currently spot-checked manually.
 - **TTS runs on OpenAI**, not the sponsored OpenRouter credits, because OpenRouter has no working TTS endpoint today.
 
-**Roadmap:**
-- Real nutrition data (Edamam) replacing model-estimated macros.
-- Smart grocery: merge quantities across a week, pantry tracking.
-- Step-timestamped video — tap a step, jump to that moment in the clip.
-- **Research direction:** fine-tune a small model on the structured recipe data Mise already generates, replacing frontier-model calls on every import to cut cost and latency.
+**Roadmap (what's next):**
+- **Make it social** — add friends and share cooking progress.
+- **Recipe exploration** — embed recipe search in the app, alongside importing photos and videos.
+- **Fine-tune models** to remember user preferences and reduce response latency.
 
 ---
 
 ## AI usage, credits & disclosure
 
-- **AI-assisted development.** This project was built with substantial help from **Claude Code** (Anthropic) for implementation, debugging, and iteration. Architectural decisions, scoping, and product direction were author-driven; the design and the choices documented here are the author's own work.
+- **AI-assisted development.** This project was built with substantial help from **Claude Code** for implementation, debugging, and iteration. Architectural decisions, scoping, product direction, and design were my own work.
 - **Foundation models, not trained models.** Mise is *applied* AI — it builds on Google **Gemini 2.5**, **Llama 3.3 70B**, and **OpenAI** models via API. No model was trained or fine-tuned (see roadmap for the fine-tuning direction).
 - **Tooling & libraries:** Expo / React Native, FastAPI, Supabase, Zustand, `@shopify/flash-list`, `yt-dlp`, `ffmpeg`, OpenRouter, DigitalOcean serverless inference.
 - **Repository:** public, with full commit history reflecting development over time.
