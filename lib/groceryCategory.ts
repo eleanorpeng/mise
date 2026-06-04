@@ -76,3 +76,24 @@ export function inferGroceryCategory(name: string): GroceryCategory {
   }
   return 'other';
 }
+
+// Categories accepted by the DB `grocery_category` enum. 'spices' and 'drinks'
+// require supabase_migration_grocery_categories.sql; until that's applied (or as
+// a guard against future drift) map any category the DB doesn't know to 'other'
+// so adding an item never silently fails its insert.
+const DB_GROCERY_CATEGORIES = new Set<string>([
+  'produce',
+  'dairy',
+  'meat',
+  'seafood',
+  'pantry',
+  'spices',
+  'drinks',
+  'frozen',
+  'bakery',
+  'other',
+]);
+
+export function toDbGroceryCategory(cat: string): GroceryCategory {
+  return (DB_GROCERY_CATEGORIES.has(cat) ? cat : 'other') as GroceryCategory;
+}
