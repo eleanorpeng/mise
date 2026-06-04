@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -202,7 +203,21 @@ function RecipePreview({
 export function ChefChat() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [keyboardShown, setKeyboardShown] = useState(false);
   const fetchRecipes = useRecipesStore((s) => s.fetch);
+
+  // Track the keyboard so the composer can drop its tab-bar clearance padding
+  // while the keyboard is up (otherwise it floats high above the keyboard).
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, () => setKeyboardShown(true));
+    const hide = Keyboard.addListener(hideEvt, () => setKeyboardShown(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState('');
@@ -352,6 +367,7 @@ export function ChefChat() {
     const text = draft.trim();
     if (!text || isResponding) return;
     setDraft('');
+    Keyboard.dismiss();
     send(text, turns);
   };
 
@@ -541,7 +557,14 @@ export function ChefChat() {
         </ScrollView>
       )}
 
-      <View style={[styles.composer, { paddingBottom: insets.bottom + 64 }]}>
+      <View
+        style={[
+          styles.composer,
+          // Clear the tab bar when the keyboard is down; sit snug above the
+          // keyboard when it's up (KeyboardAvoidingView already lifts it).
+          { paddingBottom: keyboardShown ? spacing.sm : insets.bottom + 64 },
+        ]}
+      >
         <TextInput
           ref={inputRef}
           value={draft}
