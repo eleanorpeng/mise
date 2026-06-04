@@ -12,7 +12,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Speech from 'expo-speech';
 import {
   AudioModule,
   createAudioPlayer,
@@ -86,18 +85,6 @@ export default function CookAlongScreen() {
       } catch {}
       playerRef.current = null;
     }
-    Speech.stop(); // also halt any on-device speech
-  };
-
-  // On-device TTS (instant, offline) for step readouts and nav confirmations.
-  // Server TTS (speakText) is reserved for question answers, where the nicer
-  // voice is worth the round trip.
-  const speakOnDevice = async (text: string) => {
-    if (!text) return;
-    ttsCounterRef.current++; // invalidate any in-flight server TTS
-    stopSpeech();
-    await setSessionRecording(false).catch(() => {}); // route to the speaker
-    Speech.speak(text, { rate: 1.0 });
   };
 
   // The iOS audio session can EITHER record OR play — not both at once. TTS
@@ -210,7 +197,7 @@ export default function CookAlongScreen() {
     if (recipe.steps.length === 0) return;
     autoStartedRef.current = true;
     const intro = `Let's cook ${recipe.title}. Step 1. ${recipe.steps[0].instruction}`;
-    speakOnDevice(intro);
+    speakText(intro);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipe]);
 
@@ -237,7 +224,7 @@ export default function CookAlongScreen() {
       setTimerSeconds((s) => {
         if (s == null) return null;
         if (s <= 1) {
-          speakOnDevice('Timer done.');
+          speakText('Timer done.');
           return null;
         }
         return s - 1;
@@ -251,7 +238,7 @@ export default function CookAlongScreen() {
     if (!recipe) return;
     const step = recipe.steps[index];
     if (!step) return;
-    speakOnDevice(`Step ${index + 1}. ${step.instruction}`);
+    speakText(`Step ${index + 1}. ${step.instruction}`);
   };
 
   const goToStep = (index: number) => {
@@ -329,16 +316,11 @@ export default function CookAlongScreen() {
         setTimerSeconds(result.timer_seconds);
       }
 
-      // 2. Then speak (non-blocking): a question answer gets the nicer server
-      //    voice; step/nav confirmations speak instantly on-device.
-      if (result.speech_audio_b64) {
-        playAudioB64(result.speech_audio_b64, result.speech_audio_mime || 'audio/mpeg');
-      } else if (result.speech) {
-        if (result.intent === 'answer' || result.intent === 'unknown') {
-          speakText(result.speech);
-        } else {
-          speakOnDevice(result.speech);
-        }
+      // 2. Then speak (non-blocking) — one consistent on-device voice for
+      //    everything (instant, offline; OpenRouter has no working TTS and the
+      //    OpenAI fallback would be a second, mismatched voice).
+      if (result.speech) {
+        speakText(result.speech);
       }
     } catch (err: any) {
       console.error('[cook-along]', err);
@@ -481,10 +463,6 @@ export default function CookAlongScreen() {
           <Text style={styles.hint}>Listening…</Text>
         ) : isProcessing ? (
           <Text style={styles.hint}>Thinking…</Text>
-        ) : lastTurn?.transcript ? (
-          <Text style={styles.transcript} numberOfLines={2}>
-            “{lastTurn.transcript}”
-          </Text>
         ) : (
           <Text style={styles.hint}>
             Tap the mic and say “next”, “back”, or ask a question.

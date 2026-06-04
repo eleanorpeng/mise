@@ -599,18 +599,6 @@ export default function RecipeDetailScreen() {
                   index={i + 1}
                   expanded={expandedTechnique === (step.id ?? String(i))}
                   onToggleTechnique={() => {
-                    LayoutAnimation.configureNext({
-                      duration: 220,
-                      create: {
-                        type: LayoutAnimation.Types.easeInEaseOut,
-                        property: LayoutAnimation.Properties.opacity,
-                      },
-                      update: { type: LayoutAnimation.Types.easeInEaseOut },
-                      delete: {
-                        type: LayoutAnimation.Types.easeInEaseOut,
-                        property: LayoutAnimation.Properties.opacity,
-                      },
-                    });
                     setExpandedTechnique(
                       expandedTechnique === (step.id ?? String(i))
                         ? null
@@ -782,18 +770,17 @@ function StepBlock({
           <TouchableOpacity
             onPress={onToggleTechnique}
             activeOpacity={0.85}
-            style={[
-              styles.techniqueCard,
-              expanded && styles.techniqueCardExpanded,
-            ]}
+            style={styles.techniqueCard}
           >
             <Text style={styles.techniqueName}>{step.technique.name}</Text>
-            {expanded && (
+          </TouchableOpacity>
+          {expanded && (
+            <View style={styles.techniquePanel}>
               <Text style={styles.techniqueExplanation}>
                 {step.technique.explanation}
               </Text>
-            )}
-          </TouchableOpacity>
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -1169,11 +1156,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
   },
-  techniqueCardExpanded: {
+  techniquePanel: {
     alignSelf: 'stretch',
+    marginTop: spacing.xs,
+    backgroundColor: colors.blush,
+    borderRadius: radius.input,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
-    gap: spacing.xs,
   },
   techniqueName: {
     fontFamily: fonts.bodyMedium,
