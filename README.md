@@ -96,6 +96,27 @@ A hands-free **perceive → reason → act** loop:
 - **Reason** — a **keyword fast-path** resolves "next / back / repeat" instantly with *no model call*; open-ended questions fall through to **Llama 3.3 70B** (DigitalOcean inference), which returns a structured intent.
 - **Act** — a small tool set (`next · back · goto · timer · answer`) executes, and the response is spoken with **OpenAI TTS**. Navigation is decoupled from speech, so the step moves the instant the agent understands you.
 
+### Chef chatbot — a conversational, personalized pipeline
+
+The Chef turns the ingredients you have on hand into a recipe through a short conversation. It runs on **Llama 3.3 70B** (DigitalOcean inference) and is structured as a two-phase, memory-aware loop:
+
+```
+your message ──▶ system prompt + your profile (diet · cuisine · skill)
+                           │
+            Llama 3.3 70B  ▼  → one structured JSON object
+        ┌──────────────────┴───────────────────┐
+   clarify phase                          propose phase
+ (needs_more_info)                     (needs_more_info=false)
+ ask ONE question +                   full recipe (RecipeExtraction)
+ quick-reply chips                    → reused _persist_recipe()
+                           │
+                  may emit "learned" → saved to your profile (durable memory)
+```
+
+- **Structured output, streamed UX.** The model is asked for a *single JSON object* (`reply`, `needs_more_info`, `recipe`, `suggestions`, `learned`). To still feel live, the streaming endpoint (`POST /chef/chat/stream`, Server-Sent Events) **peels the `reply` field's text off the token stream as it arrives** with a small JSON-aware state machine — so the conversational message lands word-by-word while the structured fields are parsed once at the end. A non-streaming `POST /chef/chat` exists as a fallback.
+- **Two phases.** In *clarify* it asks one question at a time and offers tappable suggestion chips; in *propose* it returns a complete recipe in the **same `RecipeExtraction` schema as the import pipeline**, persisted via the same `_persist_recipe()` path — so Chef recipes are first-class.
+- **Memory & personalization.** Your profile (dietary restrictions, cuisine preferences, skill level) is injected into the prompt, and when you state a *durable* preference mid-chat ("I'm vegetarian"), the model emits a `learned` field that's written back to your profile — so the Chef remembers across sessions. Conversations are persisted to Supabase with a History sheet.
+
 ### Models & providers
 
 | Stage | Model | Provider |
