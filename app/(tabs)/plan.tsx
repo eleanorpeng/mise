@@ -152,6 +152,13 @@ export default function PlanScreen() {
           scrollEnabled={pagerEnabled}
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={handleScrollEnd}
+          // Start centered on the current week (page 1). contentOffset applies
+          // synchronously on mount/remount (so tab-switching to grocery and back
+          // never lands on the prev-week page); onLayout re-centers as a backstop.
+          contentOffset={{ x: SCREEN_WIDTH, y: 0 }}
+          onLayout={() =>
+            pagerRef.current?.scrollTo({ x: SCREEN_WIDTH, y: 0, animated: false })
+          }
           contentContainerStyle={{ flexGrow: 0 }}
           style={{ flex: 1 }}
         >
