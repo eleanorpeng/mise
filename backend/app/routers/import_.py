@@ -3,6 +3,7 @@ import shutil
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -227,18 +228,71 @@ def _assemble_in_memory(
 
 
 
-@router.post("/url", status_code=201)
+async def _run_url_import(user_id: str, url: str, job_id: str) -> None:
+    """Run the full video import in the background and update the import job.
+
+    Kept off the request path so the HTTP request returns immediately — the
+    whole pipeline (download → transcribe → synthesize) used to run inside the
+    request and exceeded the platform's gateway timeout (503) on slower videos.
+    The client polls GET /import/jobs/{job_id} until status is done/failed.
+    """
+    work_dir = None
+    try:
+        # Fast path: we've already synthesised this URL.
+        cached = get_cached_extraction(url)
+        if cached is not None:
+            recipe = _persist_recipe(user_id, cached, url, cover_url=None)
+            _update_job_status(job_id, "done", recipe_id=recipe["id"])
+            return
+
+        _update_job_status(job_id, "downloading")
+        result = await process_structure(url)
+        work_dir = result.work_dir
+
+        _update_job_status(job_id, "synthesising")
+        extraction = await enrich_techniques(result.extraction)
+        cache_extraction(url, extraction)
+
+        recipe = _persist_recipe(user_id, extraction, url, cover_url=None)
+
+        # Use the video's representative frame as the cover (falls back to the
+        # colored placeholder if extraction/upload failed).
+        if result.thumbnail_path:
+            cover_url = _upload_thumbnail(result.thumbnail_path, recipe["id"])
+            if cover_url:
+                supabase.table("recipes").update(
+                    {"cover_image_url": cover_url}
+                ).eq("id", recipe["id"]).execute()
+
+        _update_job_status(job_id, "done", recipe_id=recipe["id"])
+
+    except DownloadError as exc:
+        _update_job_status(job_id, "failed", error_message=f"Could not download video: {exc}")
+    except MediaError as exc:
+        _update_job_status(job_id, "failed", error_message=f"Could not process video: {exc}")
+    except OpenAIError as exc:
+        logger.warning("Import AI error for %s: %s", url, exc)
+        _update_job_status(job_id, "failed", error_message="AI service temporarily unavailable")
+    except Exception:
+        logger.exception("Unexpected error processing %s", url)
+        _update_job_status(job_id, "failed", error_message="An unexpected error occurred")
+    finally:
+        if work_dir and work_dir.exists():
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+
+@router.post("/url", status_code=202)
 @limiter.limit("10/minute")
 async def import_from_url(
     request: Request,
     body: UrlImportRequest,
+    background: BackgroundTasks,
     user_id: str = Depends(get_current_user),
 ):
     url = body.url.strip()
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
 
-    # Create import job (frontend can subscribe via Realtime)
     job_res = supabase.table("import_jobs").insert({
         "user_id": user_id,
         "source_url": url,
@@ -247,63 +301,29 @@ async def import_from_url(
     }).execute()
     job_id = job_res.data[0]["id"]
 
-    # Fast path: we've already synthesised this URL. Persist the complete,
-    # enriched recipe immediately (status "ready") — no pipeline, no background.
-    cached = get_cached_extraction(url)
-    if cached is not None:
-        full_recipe = _persist_recipe(user_id, cached, url, cover_url=None)
-        _update_job_status(job_id, "done", recipe_id=full_recipe["id"])
-        return full_recipe
+    # Run the pipeline off the request path; the client polls /import/jobs/{id}.
+    background.add_task(_run_url_import, user_id, url, job_id)
+    return {"jobId": job_id, "status": "queued"}
 
-    work_dir = None
-    try:
-        _update_job_status(job_id, "downloading")
-        result = await process_structure(url)
-        work_dir = result.work_dir
 
-        _update_job_status(job_id, "synthesising")
-
-        # Enrich techniques synchronously — a background task was unreliable on
-        # the platform (best-effort, often dropped), leaving recipes with no
-        # techniques. The pass is quick and the request stays well under the
-        # gateway timeout, so just await it and persist a complete recipe.
-        extraction = await enrich_techniques(result.extraction)
-        cache_extraction(url, extraction)
-
-        recipe = _persist_recipe(user_id, extraction, url, cover_url=None)
-
-        # Use the video's representative frame as the cover. The thumbnail lives
-        # in work_dir (cleaned up below), so upload it before returning. Falls
-        # back to the colored placeholder cover if extraction/upload failed.
-        if result.thumbnail_path:
-            cover_url = _upload_thumbnail(result.thumbnail_path, recipe["id"])
-            if cover_url:
-                supabase.table("recipes").update(
-                    {"cover_image_url": cover_url}
-                ).eq("id", recipe["id"]).execute()
-                recipe["coverImageUrl"] = cover_url
-
-        _update_job_status(job_id, "done", recipe_id=recipe["id"])
-        return recipe
-
-    except DownloadError as exc:
-        _update_job_status(job_id, "failed", error_message=str(exc))
-        raise HTTPException(status_code=422, detail=f"Could not download video: {exc}")
-    except MediaError as exc:
-        _update_job_status(job_id, "failed", error_message=str(exc))
-        raise HTTPException(status_code=422, detail=f"Could not process video: {exc}")
-    except OpenAIError as exc:
-        _update_job_status(job_id, "failed", error_message=str(exc))
-        raise HTTPException(status_code=502, detail="AI service temporarily unavailable")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        _update_job_status(job_id, "failed", error_message=str(exc))
-        logger.exception("Unexpected error processing %s", url)
-        raise HTTPException(status_code=500, detail="An unexpected error occurred")
-    finally:
-        if work_dir and work_dir.exists():
-            shutil.rmtree(work_dir, ignore_errors=True)
+@router.get("/jobs/{job_id}")
+async def get_import_job(job_id: str, user_id: str = Depends(get_current_user)):
+    res = (
+        supabase.table("import_jobs")
+        .select("status, recipe_id, error_message")
+        .eq("id", job_id)
+        .eq("user_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    row = res.data if res else None
+    if not row:
+        raise HTTPException(status_code=404, detail="Import job not found")
+    return {
+        "status": row["status"],
+        "recipeId": row.get("recipe_id"),
+        "errorMessage": row.get("error_message"),
+    }
 
 
 @router.post("/photo", status_code=201)

@@ -15,8 +15,39 @@ function mimeFromName(name: string): string {
   return 'image/jpeg';
 }
 
+interface ImportJobStart {
+  jobId: string;
+  status: string;
+}
+interface ImportJobStatus {
+  status: string;
+  recipeId: string | null;
+  errorMessage: string | null;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export const importService = {
-  fromUrl: (url: string) => api.post<Recipe>('/import/url', { url }),
+  // The import runs in the background on the server (the full pipeline used to
+  // exceed the gateway timeout). Start the job, then poll until the recipe is
+  // ready and fetch it.
+  fromUrl: async (url: string): Promise<Recipe> => {
+    const { jobId } = await api.post<ImportJobStart>('/import/url', { url });
+
+    const POLL_MS = 2000;
+    const MAX_ATTEMPTS = 90; // ~3 minutes
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      await sleep(POLL_MS);
+      const job = await api.get<ImportJobStatus>(`/import/jobs/${jobId}`);
+      if (job.status === 'done' && job.recipeId) {
+        return api.get<Recipe>(`/recipes/${job.recipeId}`);
+      }
+      if (job.status === 'failed') {
+        throw new Error(job.errorMessage || 'Import failed');
+      }
+    }
+    throw new Error('Import is taking longer than expected. Please try again.');
+  },
 
   fromPhoto: async (
     imageUri: string,
