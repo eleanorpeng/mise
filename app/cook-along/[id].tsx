@@ -94,10 +94,12 @@ export default function CookAlongScreen() {
       encoding: FileSystem.EncodingType.Base64,
     });
     if (turn !== ttsCounterRef.current) return;
-    // The session stays in record-capable mode the whole session (see the
-    // pre-warm effect) — we don't flip it for playback, because flipping back
-    // to record raced with record() and captured silence. TTS plays fine in
-    // record mode.
+    // Switch to playback mode so TTS comes out of the loud speaker (iOS routes
+    // the record category to the quiet earpiece). startRecording switches back
+    // to record mode before each recording.
+    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(
+      () => {},
+    );
     stopSpeech();
     const player = createAudioPlayer({ uri: path });
     playerRef.current = player;
@@ -210,10 +212,10 @@ export default function CookAlongScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipe]);
 
-  // Put the audio session in record-capable mode ONCE for the whole screen and
-  // keep it there. We deliberately never flip to a playback-only mode: flipping
-  // back to record raced with record() and produced silent captures. TTS plays
-  // fine in this mode. Pre-warming also makes the first mic tap instant.
+  // Request the mic permission and pre-warm the recorder so the first tap is
+  // instant. The session mode is (re)set per action — record before each
+  // recording, playback before each TTS — since iOS toggles recording with the
+  // category (see startRecording / playAudioB64).
   useEffect(() => {
     (async () => {
       try {
@@ -270,9 +272,12 @@ export default function CookAlongScreen() {
     stopSpeech(); // barge-in: interrupt any TTS that's playing
 
     try {
-      // The session is already record-capable (set once on mount). Just
-      // prepare a fresh file — expo-audio needs a completed prepare before each
-      // record(), or the m4a is never finalized (no moov atom) — then record.
+      // 1. Switch the session into record mode. iOS disables recording after
+      //    TTS playback (RecordingDisabledException), so this must be set —
+      //    and awaited — before every record(), not just once on mount.
+      // 2. Prepare a fresh file: expo-audio needs a completed prepare before
+      //    each record(), or the m4a is never finalized (no moov atom).
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
     } catch (err: any) {
