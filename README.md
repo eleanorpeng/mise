@@ -1,8 +1,8 @@
 # Mise 🍳
 
-**Your AI cooking companion — capture, cook, and log.**
+**Your cooking companion — save it, cook it, log it.**
 
-Mise turns the cooking videos and restaurant photos you'd never get around to making into structured, *cookable* recipes — then teaches you the technique behind each step, plans your week, and guides you hands-free at the stove.
+Mise turns the cooking videos and restaurant photos you'd never get around to making into structured, *cookable* recipes — then teaches you the technique behind each step, plans your meals, and guides you hands-free at the stove.
 
 > React Native (Expo) · FastAPI · Postgres (Supabase) · Gemini 2.5 · Llama 3.3 · OpenAI
 
@@ -12,6 +12,7 @@ Mise turns the cooking videos and restaurant photos you'd never get around to ma
 - [The problem & the insight](#the-problem--the-insight)
 - [What Mise does](#what-mise-does)
 - [How it works](#how-it-works)
+- [Use cases & impact](#use-cases--impact)
 - [Evaluation & evidence](#evaluation--evidence)
 - [Limitations & roadmap](#limitations--roadmap)
 - [AI usage, credits & disclosure](#ai-usage-credits--disclosure)
@@ -36,15 +37,16 @@ Two bottlenecks create it:
 
 ## What Mise does
 
+*Your cooking companion — save, cook, log.*
+
 | Feature | What it is |
 |---|---|
-| 📥 **Import** | Paste a TikTok/Reels link **or** a photo of a dish → a structured recipe in seconds |
-| ⭐ **Technique annotations** | An expandable chip on each step explaining the cooking *science* — the differentiator |
-| 🗓 **Planner + macros** | Weekly meal planner with per-meal and weekly nutrition |
-| 🛒 **Smart grocery** | Aggregated, auto-categorized shopping list |
-| 🎙 **Voice cook-along** | Hands-free, step-by-step voice assistant at the stove |
-| 📔 **Cook log + recap** | A sticker-based cook log and a shareable monthly recap so you remember what you've made |
-| 👩‍🍳 **Chef chatbot** | Turn the ingredients you have on hand into a recipe |
+| 📥 **Import** | TikTok/Reel link or photo → a structured recipe |
+| ⭐ **Technique Pills** | Shows the cooking science behind each step — the differentiator |
+| 🗓 **Planner + macros** | Plan your meals and see macros for each meal (with an aggregated grocery list) |
+| 👩‍🍳 **AI Chef** | Chat with the AI to generate recipes from the ingredients you have left |
+| 🎙 **Cook-along** | Hands-free mode — ask questions at each step |
+| 📔 **Cook Log** | See a recap of the meals you've cooked |
 
 ---
 
@@ -136,6 +138,17 @@ Push-to-ship: every commit to `main` triggers **DigitalOcean App Platform** to r
 
 ---
 
+## Use cases & impact
+
+For anyone who's interested in cooking:
+
+- **Keep track of all your recipes in one place** — no more losing them across social media.
+- **Learn *why* certain techniques matter** — the technique pills build real culinary skill and knowledge, not just step-following.
+- **Plan and log your meals** — a weekly planner with macros, plus a cook log of what you've actually made.
+- **See a recap of the meals you've cooked** — and share it with friends.
+
+---
+
 ## Evaluation & evidence
 
 We validated the build through testing, empirical provider comparisons, instrumentation, and iterative failure analysis.
@@ -176,11 +189,10 @@ The commit history documents debugging real production failures end-to-end — e
 - **No automated accuracy benchmark yet** — extraction quality is currently spot-checked manually.
 - **TTS runs on OpenAI**, not the sponsored OpenRouter credits, because OpenRouter has no working TTS endpoint today.
 
-**Roadmap:**
-- Real nutrition data (Edamam) replacing model-estimated macros.
-- Smart grocery: merge quantities across a week, pantry tracking.
-- Step-timestamped video — tap a step, jump to that moment in the clip.
-- **Research direction:** fine-tune a small model on the structured recipe data Mise already generates, replacing frontier-model calls on every import to cut cost and latency.
+**Roadmap (what's next):**
+- **Make it social** — add friends and share cooking progress.
+- **Recipe exploration** — embed recipe search in the app, alongside importing photos and videos.
+- **Fine-tune models** to remember user preferences and reduce response latency.
 
 ---
 
