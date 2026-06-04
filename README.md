@@ -92,7 +92,7 @@ paste link → yt-dlp download ─┬─ ffmpeg: audio → transcribe ─┐
 
 A hands-free **perceive → reason → act** loop:
 
-- **Perceive** — `expo-audio` records with voice-activity detection (auto-stops on silence); the clip is transcribed.
+- **Perceive** — `expo-audio` records on-device with voice-activity detection (auto-stops on silence); the clip is uploaded and transcribed on the backend (Gemini 2.5 Flash, the same transcription path as the import pipeline).
 - **Reason** — a **keyword fast-path** resolves "next / back / repeat" instantly with *no model call*; open-ended questions fall through to **Llama 3.3 70B** (DigitalOcean inference), which returns a structured intent.
 - **Act** — a small tool set (`next · back · goto · timer · answer`) executes, and the response is spoken with **OpenAI TTS**. Navigation is decoupled from speech, so the step moves the instant the agent understands you.
 
