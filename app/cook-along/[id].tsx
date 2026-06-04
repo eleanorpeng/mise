@@ -269,7 +269,14 @@ export default function CookAlongScreen() {
     setLastTurn(null);
     hasSpokenRef.current = false;
     autoStoppingRef.current = false;
-    stopSpeech(); // barge-in: interrupt any TTS that's playing
+
+    // Barge-in: stop any playing TTS AND invalidate any in-flight TTS request.
+    // Bumping the counter makes a step-readout fetch that's still loading bail
+    // out (its `turn` goes stale) instead of resolving mid-recording and
+    // flipping the session back to playback mode — which silently killed the
+    // first recording in each step (the "mic only works on the second tap" bug).
+    ttsCounterRef.current++;
+    stopSpeech();
 
     try {
       // 1. Switch the session into record mode. iOS disables recording after
