@@ -8,13 +8,12 @@ const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 interface WeekCardProps {
   /** 7-length mask, Mon→Sun, true if any meal is planned that day. */
   plannedDays: boolean[];
+  /** Total number of meals planned this week. */
+  mealsPlanned: number;
 }
 
-export function WeekCard({ plannedDays }: WeekCardProps) {
+export function WeekCard({ plannedDays, mealsPlanned }: WeekCardProps) {
   const router = useRouter();
-  const totalMeals = 7;
-  const mealsPlanned = plannedDays.filter(Boolean).length;
-  const spotsLeft = totalMeals - mealsPlanned;
 
   return (
     <LinearGradient
@@ -28,9 +27,10 @@ export function WeekCard({ plannedDays }: WeekCardProps) {
           <Text style={styles.overline}>this week</Text>
           <View style={styles.countRow}>
             <Text style={styles.count}>{mealsPlanned}</Text>
-            <Text style={styles.countSuffix}>/{totalMeals}</Text>
           </View>
-          <Text style={styles.subtext}>meals planned · {spotsLeft} open</Text>
+          <Text style={styles.subtext}>
+            {mealsPlanned === 1 ? 'meal planned' : 'meals planned'}
+          </Text>
         </View>
         <TouchableOpacity
           style={styles.plannerBtn}
@@ -87,11 +87,6 @@ const styles = StyleSheet.create({
     fontSize: 52,
     color: colors.textOnDark,
     lineHeight: 56,
-  },
-  countSuffix: {
-    fontFamily: fonts.bodyRegular,
-    fontSize: 20,
-    color: 'rgba(250,232,218,0.45)',
   },
   subtext: {
     fontFamily: fonts.bodyRegular,
