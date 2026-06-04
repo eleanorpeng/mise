@@ -458,9 +458,7 @@ export default function CookAlongScreen() {
       <View style={styles.footer}>
         {isRecording ? (
           <Text style={styles.hint}>Listening…</Text>
-        ) : isProcessing ? (
-          <Text style={styles.hint}>Thinking…</Text>
-        ) : (
+        ) : isProcessing ? null : (
           <Text style={styles.hint}>
             Tap the mic and say “next”, “back”, or ask a question.
           </Text>
