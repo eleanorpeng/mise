@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { WeekPlan, PlannedMeal, GroceryItem } from '@/types';
+import { toDbGroceryCategory } from '@/lib/groceryCategory';
 import {
   plannerService,
   type PlannedMealUpdate,
@@ -177,7 +178,11 @@ export const usePlanStore = create<PlanStore>((set, get) => ({
   },
 
   addGroceryItem: async (data) => {
-    const created = await plannerService.addGroceryItem(data);
+    // Guard the category against the DB enum so an unknown one (e.g. 'spices'
+    // / 'drinks' before the enum migration) can't fail the insert and silently
+    // drop the item.
+    const safe = { ...data, category: toDbGroceryCategory(data.category ?? 'other') };
+    const created = await plannerService.addGroceryItem(safe);
     set((s) => ({
       groceryByWeek: {
         ...s.groceryByWeek,

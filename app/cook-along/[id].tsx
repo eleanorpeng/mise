@@ -18,7 +18,6 @@ import {
   RecordingPresets,
   setAudioModeAsync,
   useAudioRecorder,
-  useAudioRecorderState,
   type AudioPlayer,
 } from 'expo-audio';
 import { colors, fonts, typeScale, spacing, radius } from '@/constants';
@@ -60,7 +59,6 @@ export default function CookAlongScreen() {
     ...RecordingPresets.LOW_QUALITY,
     isMeteringEnabled: true,
   });
-  const recorderState = useAudioRecorderState(audioRecorder, 100);
 
   // Mic halo + voice activity detection (auto-stop on silence)
   const pulse = useRef(new Animated.Value(0)).current;
@@ -72,6 +70,7 @@ export default function CookAlongScreen() {
 
   // VAD tunables (metering dB, roughly -160..0; we map -50..0 -> 0..1).
   const SPEECH_THRESHOLD = 0.16; // ~-42 dB — conversational speech
+  const BASELINE_LEVEL = 0.2; // halo always shows at least this while listening
   const SILENCE_MS = 1100; // hang-up after this much trailing silence
   const NO_SPEECH_TIMEOUT_MS = 10000; // bail out if user never speaks
   const MAX_RECORD_MS = 30000; // hard cap
@@ -122,7 +121,12 @@ export default function CookAlongScreen() {
     }
   };
 
-  // Halo + VAD react to live input level from the recorder's meter.
+  // While recording, drive the halo + silence detection from a self-ticking
+  // loop that reads the recorder status directly. Previously this was a React
+  // effect keyed on `recorderState.metering`, so if metering didn't flow (which
+  // varies by device), it ran once and stalled — the halo stayed invisible and
+  // auto-stop never fired. A timer ticks regardless, and we show a visible
+  // baseline pulse so the user always sees the mic is live.
   useEffect(() => {
     if (!isRecording) {
       Animated.timing(pulse, {
@@ -133,41 +137,51 @@ export default function CookAlongScreen() {
       levelRef.current = 0;
       return;
     }
-    const now = Date.now();
-    const m = recorderState.metering;
-    let target = 0;
-    if (typeof m === 'number' && Number.isFinite(m)) {
-      target = clamp((m + 50) / 50, 0, 1);
-    }
-    const prev = levelRef.current;
-    const smoothed =
-      target > prev ? prev + (target - prev) * 0.7 : prev + (target - prev) * 0.25;
-    levelRef.current = smoothed;
-    Animated.timing(pulse, {
-      toValue: smoothed,
-      duration: 90,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    }).start();
 
-    if (target >= SPEECH_THRESHOLD) {
-      hasSpokenRef.current = true;
-      lastSpeechAtRef.current = now;
-    }
+    const tick = setInterval(() => {
+      const now = Date.now();
+      const status = audioRecorder.getStatus();
+      const m = status.metering;
+      const meteringOk = typeof m === 'number' && Number.isFinite(m) && m > -160;
+      const voice = meteringOk ? clamp((m + 50) / 50, 0, 1) : 0;
 
-    if (autoStoppingRef.current) return;
-    const elapsed = now - recordStartedAtRef.current;
-    const sinceSpeech = now - lastSpeechAtRef.current;
-    const shouldStop =
-      (hasSpokenRef.current && sinceSpeech >= SILENCE_MS) ||
-      (!hasSpokenRef.current && elapsed >= NO_SPEECH_TIMEOUT_MS) ||
-      elapsed >= MAX_RECORD_MS;
-    if (shouldStop) {
-      autoStoppingRef.current = true;
-      stopAndSend();
-    }
+      // Always pulse at least BASELINE so "listening" is visible even when the
+      // device reports no metering; voice makes it grow.
+      const display = Math.max(voice, BASELINE_LEVEL);
+      const prev = levelRef.current;
+      const smoothed =
+        display > prev ? prev + (display - prev) * 0.6 : prev + (display - prev) * 0.25;
+      levelRef.current = smoothed;
+      Animated.timing(pulse, {
+        toValue: smoothed,
+        duration: 90,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+
+      if (meteringOk && voice >= SPEECH_THRESHOLD) {
+        hasSpokenRef.current = true;
+        lastSpeechAtRef.current = now;
+      }
+
+      if (autoStoppingRef.current) return;
+      const elapsed = now - recordStartedAtRef.current;
+      const sinceSpeech = now - lastSpeechAtRef.current;
+      const shouldStop =
+        // Silence hang-up only when metering actually works (else the user taps
+        // to stop, with the no-speech/max timers as the safety net).
+        (meteringOk && hasSpokenRef.current && sinceSpeech >= SILENCE_MS) ||
+        (!hasSpokenRef.current && elapsed >= NO_SPEECH_TIMEOUT_MS) ||
+        elapsed >= MAX_RECORD_MS;
+      if (shouldStop) {
+        autoStoppingRef.current = true;
+        stopAndSend();
+      }
+    }, 100);
+
+    return () => clearInterval(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRecording, recorderState.metering, pulse]);
+  }, [isRecording]);
 
   // Fetch recipe
   useEffect(() => {

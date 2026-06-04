@@ -54,6 +54,12 @@ const KEYWORDS: Array<[GroceryCategory, RegExp]> = [
     'frozen',
     /\b(frozen|ice cream|sorbet|gelato|popsicle|frozen peas|frozen corn)\b/i,
   ],
+  // Cooking wines are pantry staples, not beverages — match before `drinks`
+  // so "Shaoxing wine", "rice wine", "mirin", etc. don't fall under Drinks.
+  [
+    'pantry',
+    /\b(shaoxing|shao xing|mirin|sake|rice wine|cooking wine|cooking sherry|cooking sake|huangjiu|michiu)\b/i,
+  ],
   [
     'drinks',
     /\b(beer|wine|juice|soda|coffee|tea|sparkling water|kombucha|cocktail|cider|espresso|champagne)\b/i,
@@ -75,4 +81,25 @@ export function inferGroceryCategory(name: string): GroceryCategory {
     if (re.test(n)) return cat;
   }
   return 'other';
+}
+
+// Categories accepted by the DB `grocery_category` enum. 'spices' and 'drinks'
+// require supabase_migration_grocery_categories.sql; until that's applied (or as
+// a guard against future drift) map any category the DB doesn't know to 'other'
+// so adding an item never silently fails its insert.
+const DB_GROCERY_CATEGORIES = new Set<string>([
+  'produce',
+  'dairy',
+  'meat',
+  'seafood',
+  'pantry',
+  'spices',
+  'drinks',
+  'frozen',
+  'bakery',
+  'other',
+]);
+
+export function toDbGroceryCategory(cat: string): GroceryCategory {
+  return (DB_GROCERY_CATEGORIES.has(cat) ? cat : 'other') as GroceryCategory;
 }
