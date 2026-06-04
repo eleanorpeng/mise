@@ -137,17 +137,6 @@ node backend/tests/payload.test.mjs
 npm run typecheck
 ```
 
-### Empirical provider evaluation
-Each provider choice was validated against real API behavior, not assumptions:
-
-| What we tested | Result | Decision |
-|---|---|---|
-| Transcription via OpenRouter file-upload endpoint | ❌ `400 invalid content-type` — endpoint unsupported | Send audio inline via chat-audio API |
-| Transcription: Voxtral vs **Gemini 2.5 Flash** (chat-audio) | Both work; Gemini returns cleaner output (no preamble) | Gemini 2.5 Flash |
-| TTS via OpenRouter `/audio/speech` (Voxtral) | ❌ `404` — not available | Route TTS to OpenAI |
-| `gpt-audio` for TTS on OpenRouter | ✅ works (streaming) — viable future swap | Documented as roadmap |
-| Grocery category enum (frontend 9 vs DB 8) | mismatch silently dropped items | Migration + client-side guard |
-
 ### Instrumentation
 The import pipeline logs **per-stage latency** (download / media+transcribe / synthesis / total) so regressions are visible in production logs, and import jobs are tracked in a DB table with status transitions.
 
