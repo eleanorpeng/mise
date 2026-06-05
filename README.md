@@ -28,7 +28,7 @@ Mise turns the cooking videos and restaurant photos you'd never get around to ma
 
 ## The problem & the insight
 
-Cooking content has moved almost entirely to short-form video, but **video is a terrible format to actually cook from.** The recipes are scattered across social media, and you can't see all the steps and ingredients at once. Once you start cooking, you're stuck scrolling back and forth through the video to catch each step.
+Cooking content has moved almost entirely to short-form video, but **video is not the best format to cook from.** The recipes are scattered across social media, and you can't see all the steps and ingredients at once. Once you start cooking, you're stuck scrolling back and forth through the video to catch each step.
 
 That's why I built Mise.
 
@@ -59,9 +59,9 @@ The backend's main job is **orchestration**: it routes each task to whichever pr
 <img width="1923" height="1077" alt="Screenshot 2026-06-04 at 2 26 43 PM" src="https://github.com/user-attachments/assets/3ab73317-8978-452c-ae52-469180339c2e" />
 
 1. **Ingestion**: `yt-dlp` downloads from TikTok, Reels, or YouTube Shorts behind one interface, with a duration cap.
-2. **Media extraction**: `ffmpeg` runs two concurrent branches: audio (mono 16 kHz) and keyframes. Keyframes use **scene-change detection** (keep only meaningful transitions, fall back to even sampling on low-motion clips) and are downscaled + sent at low detail — both choices cut vision-token cost. The same pass picks a cover image.
+2. **Media extraction**: `ffmpeg` runs two concurrent branches: audio (mono 16 kHz) and keyframes. Keyframes use **scene-change detection** (keep only meaningful transitions, fall back to even sampling on low-motion clips) and are downscaled + sent at low detail. The same pass picks a cover image.
 3. **Transcription**: audio is sent inline as base64 to **Gemini 2.5 Flash** via OpenRouter.
-4. **Synthesis**: instead of one slow model doing everything, the work is **split between two specialists**: a *fast* vision model (**Gemini 2.5 Flash**) extracts the structure–title, ingredients, quantities, steps, macros–and a *smarter* model (**Gemini 2.5 Pro**), running **text-only with no images**, writes the technique annotations. We then combine the result and return a full, structured recipe.
+4. **Synthesis**: the work is **split between two specialists**: a fast vision model (**Gemini 2.5 Flash**) extracts the structure (title, ingredients, quantities, steps, macros) and a smarter model (**Gemini 2.5 Pro**), running **text-only with no images**, writes the technique annotations. We then combine the result and return a full, structured recipe.
 
 **Photo import** reuses the back half: **Gemini 2.5 Pro** identifies the dish from a single photo (plus an optional hint) and reconstructs a home-cooking recipe, which flows into the same technique + persistence path.
 
@@ -69,8 +69,8 @@ The backend's main job is **orchestration**: it routes each task to whichever pr
 
 <img width="1923" height="1077" alt="Screenshot 2026-06-04 at 2 26 47 PM" src="https://github.com/user-attachments/assets/5c25593d-65e6-4aef-9888-85591c495c16" />
 
-- **Perceive**: `expo-audio` records on-device with voice-activity detection (auto-stops on silence); the clip is uploaded and transcribed on the backend (Gemini 2.5 Flash, the same transcription path as the import pipeline).
-- **Reason**: a **keyword fast-path** resolves "next / back / repeat" instantly with *no model call*; open-ended questions fall through to **Llama 3.3 70B** (DigitalOcean inference), which returns a structured intent.
+- **Perceive**: `expo-audio` records on-device with voice-activity detection (auto-stops on silence); the clip is uploaded and transcribed on the backend using Gemini 2.5 Flash.
+- **Reason**: a **keyword fast-path** resolves "next / back / repeat" instantly; open-ended questions fall through to **Llama 3.3 70B** (DigitalOcean inference), which returns a structured intent. The intent includes actions to take, steps to jump to, how long to set a timer, or responses to say back.
 - **Act**: a small tool set (`next · back · goto · timer · answer`) executes, and the response is spoken with **OpenAI TTS**.
 
 ### Models & providers
@@ -97,7 +97,7 @@ Every commit to `main` triggers **DigitalOcean App Platform** to rebuild the Doc
 For anyone who's interested in cooking:
 
 - Keep track of all your recipes in one place.
-- Learn *why* certain techniques matter.
+- Learn why certain techniques matter.
 - Plan and log your meals: a weekly planner with macros, plus a cook log of what you've actually made.
 - See a recap of the meals you've cooked and share it with friends.
 
@@ -138,23 +138,22 @@ The commit history documents debugging production failures end-to-end. Examples 
 
 **What's Next**
 - **Make it social**: add friends and share cooking progress.
-- **Recipe exploration**: embed recipe search in the app, alongside importing photos and videos.
+- **Recipe exploration**: embed recipe search in the app, alongside importing photos and videos. With social features, users can also explore recipes built by their friends.
 - **Fine-tune models** to remember user preferences and reduce response latency.
 
 ---
 
-## AI usage, credits & disclosure
+## AI usage, credits & libraries
 
 - **AI-assisted development.** This project was built with substantial help from **Claude Code** for implementation, debugging, and iteration. Architectural decisions, scoping, product direction, and design were my own work.
-- **Foundation models, not trained models.** Mise is *applied* AI — it builds on Google **Gemini 2.5**, **Llama 3.3 70B**, and **OpenAI** models via API. No model was trained or fine-tuned (see roadmap for the fine-tuning direction).
+- **Foundation models, not trained models.** Mise is applied AI, building on Google **Gemini 2.5**, **Llama 3.3 70B**, and **OpenAI** models via API. No model was trained or fine-tuned.
 - **Tooling & libraries:** Expo / React Native, FastAPI, Supabase, Zustand, `@shopify/flash-list`, `yt-dlp`, `ffmpeg`, OpenRouter, DigitalOcean serverless inference.
-- **Repository:** public, with full commit history reflecting development over time.
 
 ---
 
 ## Quickstart
 
-The backend is hosted on **DigitalOcean App Platform**, so you only run the frontend. The whole app runs in **Expo Go**.
+The backend is hosted on **DigitalOcean App Platform**, so you only need to run the frontend. The whole app runs in **Expo Go**.
 
 ```bash
 npm install --legacy-peer-deps
@@ -184,5 +183,3 @@ backend/app/     # FastAPI — routers/ (import, recipes, planner, voice, chef, 
 backend/Dockerfile  backend/*.sql           # App Platform build · Supabase migrations
 backend/tests/   # unit tests — python3 backend/tests/test_*.py
 ```
-
-See `CLAUDE.md` for the full feature spec and `DESIGN_SYSTEM.md` for the visual system.
